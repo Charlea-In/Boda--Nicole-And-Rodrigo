@@ -235,7 +235,7 @@ body.locked .hero-bg img{animation:none !important}
 </head>
 <body class="locked">
 <div class="intro" id="intro" data-od-id="intro-overlay" role="dialog" aria-label="Bienvenida">
-  <video id="introVideo" src="assets/intro.mp4" poster="photos/hero-1920.jpg" muted playsinline preload="auto" aria-hidden="true"></video>
+  <video id="introVideo" src="assets/intro.mp4" poster="photos/hero-1920.jpg" muted playsinline webkit-playsinline disablepictureinpicture preload="auto" aria-hidden="true"></video>
     <button class="intro-open" id="introOpen" data-od-id="intro-open" disabled>Cargando…</button>
 </div>
 <main class="deck" data-od-id="invitation-deck">
@@ -454,6 +454,7 @@ body.locked .hero-bg img{animation:none !important}
     /* El click del usuario es gesto válido: SIEMPRE intentar reproducir,
        incluso con reduceMotion o error previo. Sin fade inmediato. */
     try { introVideo.muted = true; introVideo.setAttribute("muted", ""); } catch (e) {}
+    try { if (introVideo.readyState === 0) introVideo.load(); } catch (e) {}
     try { introVideo.currentTime = 0; } catch (e) {}
     var pr = null;
     try { pr = introVideo.play(); } catch (e) { pr = null; }
@@ -473,7 +474,11 @@ body.locked .hero-bg img{animation:none !important}
   if (introVideo) {
     try { introVideo.muted = true; introVideo.setAttribute("muted", ""); introVideo.removeAttribute("autoplay"); introVideo.pause(); } catch (e) {}
     introVideo.addEventListener("canplay", markVideoReady);
-    setTimeout(markVideoReady, 9000);
+    introVideo.addEventListener("canplaythrough", markVideoReady);
+    introVideo.addEventListener("loadeddata", markVideoReady);
+    try { if (introVideo.readyState >= 2) markVideoReady(); } catch (e) {}
+    /* iOS Safari casi no precarga: el botón se habilita a los 2.5s sí o sí */
+    setTimeout(markVideoReady, 2500);
     introVideo.addEventListener("timeupdate", function(){
       if (!tapped || fading || !introVideo.duration) return;
       if (introVideo.currentTime >= introVideo.duration - 1.1) fadeToInvitation();
