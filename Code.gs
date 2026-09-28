@@ -19,6 +19,9 @@
  **********************************************************************/
 
 var SHARED_KEY = 'nicoleyrodrigo2026';
+/* Sube este número cada vez que cambies este archivo para que el admin
+   detecte despliegues viejos. */
+var CODE_VERSION = 3;
 var SHEET_INVITADOS = 'Invitados';
 var SHEET_MESAS = 'Mesas';
 var SHEET_RSVP = 'RSVP';
@@ -211,14 +214,14 @@ function _readRsvp() {
 function doGet(e) {
   var p = (e && e.parameter) || {};
   if (p.action === 'state') {
-    if (!_keyOk(p.key)) return _json({ ok: false, error: 'key' });
-    return _json({ ok: true, guests: _readGuests(), mesas: _readMesas() });
+    if (!_keyOk(p.key)) return _json({ ok: false, error: 'key', version: CODE_VERSION });
+    return _json({ ok: true, guests: _readGuests(), mesas: _readMesas(), version: CODE_VERSION });
   }
   if (p.action === 'rsvpLog') {
-    if (!_keyOk(p.key)) return _json({ ok: false, error: 'key' });
-    return _json({ ok: true, rsvp: _readRsvp() });
+    if (!_keyOk(p.key)) return _json({ ok: false, error: 'key', version: CODE_VERSION });
+    return _json({ ok: true, rsvp: _readRsvp(), version: CODE_VERSION });
   }
-  return _json({ ok: true, service: 'boda-nicole-rodrigo' });
+  return _json({ ok: true, service: 'boda-nicole-rodrigo', version: CODE_VERSION });
 }
 
 /* ESCRITURA: JSON {action, key, ...} o formulario clásico */

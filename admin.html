@@ -713,6 +713,7 @@
                    oninput="saveConfig()" />
           </div>
           <p class="hint" id="cloudStatus">Modo local — pega el URL de Sheets para sincronizar.</p>
+          <p class="hint" id="buildTag"></p>
         </div>
       </div>
 
@@ -730,6 +731,21 @@
     const STORAGE_KEY = 'cpl_guests_nr';
     const CONFIG_KEY  = 'cpl_config_nr';
     const MESAS_KEY   = 'cpl_mesas_nr';
+    /* Versión del Code.gs esperada. Si el Sheet responde con una menor
+       (o sin versión), el despliegue está viejo y hay que re-desplegar. */
+    const EXPECTED_GAS = 3;
+    const ADMIN_BUILD = '2026-09-28f';
+
+    /* Revisa la versión del despliegue en cada respuesta de lectura.
+       Devuelve true si está al día; si no, avisa y sigue (modo compatible). */
+    function checkGasVersion(r) {
+      const v = r && r.version;
+      if (v == null || v < EXPECTED_GAS) {
+        setText('cloudStatus', '⚠ Tu Apps Script está desactualizado (v' + (v == null ? '?' : v) + ', se necesita v' + EXPECTED_GAS + '): pega el Code.gs nuevo y crea una Versión nueva del despliegue.');
+        return false;
+      }
+      return true;
+    }
 
     /* Filtro activo de las pestañas: todos | pendiente | si | no */
     let statusFilter = 'todos';
@@ -864,6 +880,7 @@
         const seq0 = stateSeq;
         const r = await apiGet('state');
         if (!r || !r.ok) throw new Error('pull');
+        const gasOk = checkGasVersion(r);
         const rankSt = s => s === 'si' ? 2 : (s === 'no' ? 1 : 0);
         const byName = {};
         const cloudGuests = [];
@@ -904,12 +921,14 @@
           await apiPost('saveState', { guests: localGuests, mesas: localMesas });
           await loadRsvpLog();
           setText('cloudStatus', '✓ Datos locales subidos a Google Sheets');
+          if (!gasOk) checkGasVersion(r);
         } else {
           localStorage.setItem(STORAGE_KEY, JSON.stringify(cloudGuests));
           localStorage.setItem(MESAS_KEY, JSON.stringify(cloudMesas));
           renderTable();
           await loadRsvpLog();
           setText('cloudStatus', '✓ Conectado a Google Sheets');
+          if (!gasOk) checkGasVersion(r);
         }
       } catch (err) {
         setText('cloudStatus', 'Sin conexión — trabajando en local.');
@@ -937,6 +956,7 @@
       try {
         const r = await apiGet('rsvpLog');
         const rows = (r && r.ok && r.rsvp) || [];
+        checkGasVersion(r);
         // Auto-aplica cada respuesta al invitado (por id, o por nombre):
         // la lista se actualiza sola sin tocar nada.
         let guestsNow = loadGuests();
@@ -1039,6 +1059,7 @@
       });
 
       renderTable();
+      setText('buildTag', 'Admin ' + ADMIN_BUILD + ' · Sheet v' + EXPECTED_GAS + ' esperado');
       pullState();
 
       // Auto-refresh cada 60s para ver RSVP y cambios de otros teléfonos
@@ -1190,7 +1211,7 @@
         const del = await cloudDelete('deleteGuest', { id });
         const push = await pushNow();
         if (del.ok || push.ok) showToast('✓ Invitado eliminado del Sheet.');
-        else showToast('Eliminado local. Sin conexión al Sheet — se reintentará.');
+        else showToast('Eliminado local. Sheet dice: ' + (del.error || push.error || '?') + ' — se reintentará.');
       })();
     }
 
@@ -1421,7 +1442,7 @@
         const del = await cloudDelete('deleteMesa', { id });
         const push = await pushNow();
         if (del.ok || push.ok) showToast('✓ Mesa eliminada del Sheet.');
-        else showToast('Eliminada local. Sin conexión al Sheet — se reintentará.');
+        else showToast('Eliminada local. Sheet dice: ' + (del.error || push.error || '?') + ' — se reintentará.');
       })();
     }
     /* Lugares ocupados de una mesa = suma de pases (no de invitados).
