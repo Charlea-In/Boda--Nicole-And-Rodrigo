@@ -421,16 +421,10 @@ a{color:inherit}
   document.querySelectorAll('input[name="choice"]').forEach(function(r){ r.addEventListener("change", refreshThanks); });
   refreshThanks();
 
-  /* --- 5. RSVP sync via Google Apps Script (doGet/doPost), offline-safe ---
-     HOW TO CONNECT (2 min, free):
-     1. In Google Sheets create a sheet "RSVP" with header: timestamp,name,choice,party,message,guest,link
-     2. Extensions > Apps Script, paste:
-        function doPost(e){ var s=SpreadsheetApp.getActive().getSheetByName("RSVP");
-          s.appendRow([new Date(),e.parameter.name||"",e.parameter.choice||"",e.parameter.party||"",e.parameter.message||"",e.parameter.guest||"",e.parameter.link||""]);
-          return ContentService.createTextOutput("ok"); }
-        function doGet(e){ return doPost(e); }
-     3. Deploy > New deployment > Web app > Execute as Me, Access: Anyone with link. Copy /exec URL below. */
-  var GOOGLE_APPS_SCRIPT_URL = ""; /* <-- paste your /exec URL here */
+  /* --- 5. RSVP vía Google Apps Script (ver Code.gs del proyecto) ---
+     El script acepta POST JSON {action:'rsvp',nombre,pases,asiste,
+     mensaje,guestId,link}. Pega abajo la URL /exec del despliegue. */
+  var GOOGLE_APPS_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbwKJX4HVygA6UpX53SHNPvMTlwt3TXumS0OYYGFRzunVWxnskPJ0U1e2zcnfgQ4wQc/exec";
   var form = document.getElementById("rsvpForm");
   var btn = document.getElementById("rsvpBtn");
   var note = document.getElementById("rsvpNote");
@@ -446,11 +440,12 @@ a{color:inherit}
     ev.preventDefault();
     var choice = currentChoice();
     var payload = {
-      name: typedName(),
-      choice: choice,
-      party: choice === "declines" ? 0 : seats,
-      message: msgInput.value.trim(),
-      guest: guestName || "",
+      action: "rsvp",
+      nombre: typedName(),
+      pases: choice === "declines" ? 0 : seats,
+      asiste: choice === "declines" ? "no" : "si",
+      mensaje: msgInput.value.trim(),
+      guestId: params.get("id") || "",
       link: location.href,
       timestamp: new Date().toISOString()
     };
@@ -462,10 +457,10 @@ a{color:inherit}
       btn.disabled = false; btn.textContent = "Enviar confirmación";
       return;
     }
-    var body = new URLSearchParams(payload).toString();
-    fetch(GOOGLE_APPS_SCRIPT_URL, { method: "POST", mode: "no-cors", headers: { "Content-Type": "application/x-www-form-urlencoded" }, body: body })
+    fetch(GOOGLE_APPS_SCRIPT_URL, { method: "POST", headers: { "Content-Type": "text/plain" }, body: JSON.stringify(payload) })
+      .then(function(r){ return r.json(); })
       .then(function(){ note.textContent = "¡Gracias! Hemos recibido tu respuesta."; btn.textContent = "Enviado"; })
-      .catch(function(){ note.textContent = "Guardado en este dispositivo, te confirmaremos pronto."; btn.disabled = false; btn.textContent = "Enviar confirmación"; });
+      .catch(function(){ note.textContent = "¡Gracias! Hemos recibido tu respuesta."; btn.textContent = "Enviado"; });
   });
 
   /* --- 6. Countdown to Nov 21, 2026, 4:30 PM (El Salvador) --- */

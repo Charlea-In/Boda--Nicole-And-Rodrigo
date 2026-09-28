@@ -682,8 +682,8 @@
           <div class="form-group">
             <label for="baseUrl">URL base de la invitación</label>
             <input type="text" id="baseUrl"
-                   value="https://charlea-in.github.io/test-invitaci-n/"
-                   placeholder="https://charlea-in.github.io/test-invitaci-n/"
+                   value="https://charlea-in.github.io/Boda--Nicole-And-Rodrigo/"
+                   placeholder="https://charlea-in.github.io/Boda--Nicole-And-Rodrigo/"
                    oninput="saveConfig(); renderTable()" />
           </div>
           <p class="hint">
@@ -892,7 +892,7 @@
               <td style="color:var(--muted); font-size:0.76rem; white-space:nowrap;">${escapeHtml(fecha)}</td>
               <td class="td-name">${escapeHtml(row.nombre || '—')}<small style="display:block; color:var(--muted); font-weight:400;">${row.pases || 1} pase${(row.pases || 1) > 1 ? 's' : ''}</small></td>
               <td><span class="badge" style="background:${ok ? 'var(--sage-soft)' : '#FBEFEF'}; color:${ok ? 'var(--sage-dark)' : 'var(--danger)'};">${ok ? 'Sí' : 'No'}</span></td>
-              <td style="font-size:0.8rem; color:var(--muted);">${escapeHtml(row.comida || '—')}</td>
+              <td style="font-size:0.8rem; color:var(--muted);">${escapeHtml(row.comida || row.mensaje || '—')}</td>
               <td><button class="btn btn--outline btn--icon" onclick="applyRsvp('${escapeHtml(row.guestId || '')}', '${ok ? 'si' : 'no'}', '${escapeHtml((row.nombre || '').replace(/'/g, ''))}')" title="Aplicar al invitado"><i class="fa-solid fa-check"></i></button></td>
             </tr>
           `;
