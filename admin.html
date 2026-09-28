@@ -701,7 +701,7 @@
           <div class="form-group" style="margin-top:14px;">
             <label for="scriptUrl">Google Apps Script URL (nube)</label>
             <input type="text" id="scriptUrl"
-                   value=""
+                   value="https://script.google.com/macros/s/AKfycbwKJX4HVygA6UpX53SHNPvMTlwt3TXumS0OYYGFRzunVWxnskPJ0U1e2zcnfgQ4wQc/exec"
                    placeholder="https://script.google.com/macros/s/.../exec"
                    oninput="saveConfig(); pullStateSoon()" />
           </div>
@@ -945,6 +945,14 @@
           return el && !(st[id] || '').trim() && el.value.trim();
         });
         if (needsHeal) saveConfig();
+      }
+
+      // Migración: si quedó guardada la URL vieja (test-invitaci-n),
+      // se reemplaza por la actual y se guarda (arregla todos los teléfonos).
+      const baseEl = document.getElementById('baseUrl');
+      if (baseEl && baseEl.value.includes('test-invitaci-n')) {
+        baseEl.value = 'https://charlea-in.github.io/Boda--Nicole-And-Rodrigo/';
+        saveConfig();
       }
 
       // Enter en el input nombre
