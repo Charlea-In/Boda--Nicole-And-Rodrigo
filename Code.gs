@@ -25,9 +25,13 @@ var SHEET_RSVP = 'RSVP';
 
 function _sheet(name) {
   var ss = SpreadsheetApp.getActiveSpreadsheet();
-  var sh = ss.getSheetByName(name);
-  if (!sh) sh = ss.insertSheet(name);
-  return sh;
+  var want = String(name).replace(/^\s+|\s+$/g, '').toLowerCase();
+  var sheets = ss.getSheets();
+  for (var i = 0; i < sheets.length; i++) {
+    var n = String(sheets[i].getName()).replace(/^\s+|\s+$/g, '').toLowerCase();
+    if (n === want) return sheets[i];
+  }
+  return ss.insertSheet(name);
 }
 
 function _json(obj) {
