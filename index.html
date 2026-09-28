@@ -5,6 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Nicole &amp; Rodrigo — Invitación de boda · 21 Nov 2026</title>
 <meta name="description" content="Junto a sus familias, Nicole y Rodrigo te invitan a celebrar su boda — Ministerio Cristiano Internacional Río de Gloria, San Salvador, 21 de noviembre de 2026.">
+<link rel="preload" as="image" href="photos/hero-1920.webp" type="image/webp" fetchpriority="high">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,400;0,500;0,600;1,400;1,500&family=Pinyon+Script&family=Montserrat:wght@400;500;600&display=swap" rel="stylesheet">
@@ -45,12 +46,12 @@ body.locked{overflow:hidden}
 .intro{position:fixed;inset:0;z-index:100;display:flex;align-items:center;justify-content:center;text-align:center;color:#FFF8EC;transition:opacity 2s ease,visibility 2s}
 .intro video{position:absolute;inset:0;width:100%;height:100%;object-fit:cover}
 .intro.hide{opacity:0;visibility:hidden;pointer-events:none}
-.intro-open{position:absolute;bottom:36px;left:50%;transform:translateX(-50%);min-height:44px;white-space:nowrap;padding:10px 26px;border-radius:999px;border:1.5px solid #FFF8EC;background:rgba(255,248,236,.12);color:#FFF8EC;font-family:var(--body);font-weight:600;font-size:10px;letter-spacing:.24em;text-transform:uppercase;cursor:pointer;backdrop-filter:blur(4px);transition:background .2s ease}
-.intro-open:hover{background:var(--sage-deep-hex);border-color:var(--sage-deep-hex)}
-.intro-open:disabled{opacity:.45;cursor:wait}
+.intro-open{position:absolute;bottom:36px;left:50%;transform:translateX(-50%);min-height:48px;white-space:nowrap;padding:12px 30px;border-radius:999px;border:1.5px solid #8C6E2F;background:#8C6E2F;color:#FFF9EE;font-family:var(--body);font-weight:700;font-size:11px;letter-spacing:.24em;text-transform:uppercase;cursor:pointer;box-shadow:0 6px 22px rgba(0,0,0,.45);transition:background .2s ease,transform .15s ease}
+.intro-open:hover{background:#6E5522;border-color:#6E5522;color:#FFF9EE}
+.intro-open:disabled{opacity:.92;cursor:wait}
 .intro-open.fadeout{opacity:0;transition:opacity .5s ease;pointer-events:none}
-.intro-open:not(:disabled){animation:glow 2.4s ease-in-out infinite}
-@keyframes glow{0%,100%{box-shadow:0 0 0 0 rgba(255,248,236,.35)}50%{box-shadow:0 0 0 12px rgba(255,248,236,0)}}
+.intro-open:not(:disabled){animation:glowGold 2.4s ease-in-out infinite}
+@keyframes glowGold{0%,100%{box-shadow:0 6px 22px rgba(0,0,0,.45),0 0 0 0 rgba(201,164,92,.55)}50%{box-shadow:0 6px 22px rgba(0,0,0,.45),0 0 0 12px rgba(201,164,92,0)}}
 /* ---------- full-screen sections (sin barra, tarjetas a pantalla completa) ---------- */
 .deck{
   display:grid;grid-template-columns:1fr;gap:0;
@@ -62,7 +63,7 @@ body.locked{overflow:hidden}
   display:flex;flex-direction:column;justify-content:safe center;min-height:100svh;
 }
 .card.pad>*,.card.gal>*,.countband>*{position:relative;z-index:1}
-.card.pad::before,.card.gal::before,.countband::before{content:"";position:absolute;inset:0;background-image:url("assets/fondo-floral.jpg");background-size:cover;background-position:center;background-repeat:no-repeat;opacity:.5;pointer-events:none}
+.card.pad::before,.card.gal::before,.countband::before{content:"";position:absolute;inset:0;background-image:url("assets/fondo-floral.jpg");background-image:-webkit-image-set(url("assets/fondo-floral-2x.webp") 2x,url("assets/fondo-floral.jpg") 1x);background-image:image-set(url("assets/fondo-floral-2x.webp") type("image/webp") 2x,url("assets/fondo-floral-2x.jpg") type("image/jpeg") 2x,url("assets/fondo-floral.jpg") type("image/jpeg") 1x);background-size:cover;background-position:center;background-repeat:no-repeat;opacity:.5;pointer-events:none}
 .card.pad{padding:56px 24px 60px}
 .card.pad>.sec-title,.card.pad>.timeline,.card.pad>.detail-list,
 .card.pad>.itin,.card.pad>.rsvp-lead,.card.pad>.rsvp-hello,
@@ -71,12 +72,17 @@ body.locked{overflow:hidden}
 /* reveal */
 .reveal{opacity:0;transform:translateY(26px);transition:opacity .8s ease,transform .8s ease}
 .reveal.visible{opacity:1;transform:none}
+/* Invitación congelada mientras el intro está visible: nada anima detrás del video */
+body.locked .reveal{opacity:0 !important;transform:translateY(26px) !important}
+body.locked .hero [data-rise]{animation:none !important;opacity:0 !important;transform:translateY(26px)}
+body.locked .hero-bg img{animation:none !important}
 @media(prefers-reduced-motion:reduce){.reveal{opacity:1;transform:none;transition:none}html{scroll-behavior:auto}.hero-bg img{animation:none}.hero [data-rise]{animation:none;opacity:1;transform:none}.intro-open:not(:disabled){animation:none}}
 /* ---------- HERO ---------- */
 .hero{min-height:100svh;color:#FFF8EC;text-align:center;isolation:isolate}
 .hero-bg{position:absolute;inset:0;z-index:-2}
+.hero-bg picture,.closing-bg picture{display:block;width:100%;height:100%}
 .hero-bg img{width:100%;height:100%;object-fit:cover;object-position:center 55%;animation:kenburns 24s ease-in-out infinite alternate}
-@keyframes kenburns{from{transform:scale(1)}to{transform:scale(1.09)}}
+@keyframes kenburns{from{transform:scale(1)}to{transform:scale(1.05)}}
 .hero [data-rise]{opacity:0;animation:rise 1.1s cubic-bezier(.22,.61,.36,1) forwards;animation-delay:var(--d,0s)}
 @keyframes rise{from{opacity:0;transform:translateY(26px)}to{opacity:1;transform:translateY(0)}}
 .hero::after{
@@ -229,14 +235,14 @@ body.locked{overflow:hidden}
 </head>
 <body class="locked">
 <div class="intro" id="intro" data-od-id="intro-overlay" role="dialog" aria-label="Bienvenida">
-  <video id="introVideo" src="assets/intro.mp4" muted playsinline preload="auto" aria-hidden="true"></video>
+  <video id="introVideo" src="assets/intro.mp4" poster="photos/hero-1920.jpg" muted playsinline preload="auto" aria-hidden="true"></video>
     <button class="intro-open" id="introOpen" data-od-id="intro-open" disabled>Cargando…</button>
 </div>
 <main class="deck" data-od-id="invitation-deck">
 
   <!-- 1 HERO -->
   <article class="card hero reveal" id="hero" data-od-id="hero-card" aria-label="Portada de la invitación">
-    <div class="hero-bg"><img src="photos/hero.jpg" alt="Nicole y Rodrigo en escaleras de jardín iluminadas de noche" width="3452" height="1942"></div>
+    <div class="hero-bg"><picture><source type="image/webp" srcset="photos/hero-1920.webp 1920w" sizes="100vw"><img src="photos/hero-1920.jpg" srcset="photos/hero-1920.jpg 1920w, photos/hero.jpg 3452w" sizes="100vw" alt="Nicole y Rodrigo en escaleras de jardín iluminadas de noche" width="1920" height="1080" fetchpriority="high" decoding="async"></picture></div>
     <div class="hero-inner">
       <div>
         <div class="kicker" data-od-id="hero-kicker" data-rise style="--d:.1s">Junto a sus familias</div>
@@ -370,7 +376,7 @@ body.locked{overflow:hidden}
 
   <!-- 7 CLOSING -->
   <article class="card closing reveal" id="closing" data-od-id="closing-card" aria-label="Cierre">
-    <div class="closing-bg"><img src="photos/sunset.jpg" alt="Nicole y Rodrigo de la mano junto a una piscina infinita al atardecer" width="2260" height="2336"></div>
+    <div class="closing-bg"><picture><source type="image/webp" srcset="photos/sunset-1600.webp 1600w" sizes="100vw"><img src="photos/sunset-1600.jpg" srcset="photos/sunset-1600.jpg 1600w, photos/sunset.jpg 2260w" sizes="100vw" alt="Nicole y Rodrigo de la mano junto a una piscina infinita al atardecer" width="1600" height="1654" loading="lazy" decoding="async"></picture></div>
     <div class="closing-text" data-od-id="closing-body">
       <span class="script">no podemos esperar</span>
       <span class="serif">Celebrar<br>contigo!</span>
@@ -413,8 +419,9 @@ body.locked{overflow:hidden}
   }
   function escapeHtml(s){ return String(s).replace(/[&<>"']/g, function(c){ return {"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]; }); }
 
-  /* --- 1b. Intro definitivo: el video espera el tap, suena la música,
-         el fade de 2s arranca al final del video (7.5-8s). --- */
+  /* --- 1b. Intro: el video NUNCA suena/reproduce solo.
+         Click "Abrir invitación" -> video (0s) + música juntos (~8s).
+         Fade de 2s cuando falta ~1.1s de video. Invitación congelada hasta el fade. --- */
   var intro = document.getElementById("intro");
   var introBtn = document.getElementById("introOpen");
   var introVideo = document.getElementById("introVideo");
@@ -431,19 +438,40 @@ body.locked{overflow:hidden}
     fading = true;
     intro.classList.add("hide");
     document.body.classList.remove("locked");
-    setTimeout(function(){ if (intro && intro.parentNode) intro.parentNode.removeChild(intro); }, 2100);
+    try { window.dispatchEvent(new Event("invitation:open")); } catch (e) {}
+    setTimeout(function(){
+      try { if (introVideo) introVideo.pause(); } catch (e) {}
+      if (intro && intro.parentNode) intro.parentNode.removeChild(intro);
+    }, 2100);
   }
   function openInvitation(){
     if (!intro || fading) return;
     tapped = true;
     if (introBtn) { introBtn.disabled = true; introBtn.classList.add("fadeout"); }
     var audioEl = document.getElementById("bgMusic");
-    if (audioEl) playSafe(audioEl);
-    if (!introVideo || reduceMotion || videoError || introVideo.ended) fadeToInvitation();
-    else playSafe(introVideo);
+    if (audioEl) { try { audioEl.currentTime = 0; } catch (e) {} playSafe(audioEl); }
+    if (!introVideo) { fadeToInvitation(); return; }
+    /* El click del usuario es gesto válido: SIEMPRE intentar reproducir,
+       incluso con reduceMotion o error previo. Sin fade inmediato. */
+    try { introVideo.muted = true; introVideo.setAttribute("muted", ""); } catch (e) {}
+    try { introVideo.currentTime = 0; } catch (e) {}
+    var pr = null;
+    try { pr = introVideo.play(); } catch (e) { pr = null; }
+    if (pr && typeof pr.then === "function") {
+      pr.then(function(){
+        /* Reproduciendo: el fade lo disparan timeupdate/ended, más seguridad 9.5s */
+        setTimeout(function(){ fadeToInvitation(); }, 9500);
+      }, function(){
+        /* Rechazado (permiso/codec): reintento sordo y salida corta para no colgar */
+        try { introVideo.muted = true; var pr2 = introVideo.play(); if (pr2 && pr2.catch) pr2.catch(function(){}); } catch (e2) {}
+        setTimeout(function(){ fadeToInvitation(); }, 1200);
+      });
+    } else {
+      setTimeout(function(){ fadeToInvitation(); }, 9500);
+    }
   }
   if (introVideo) {
-    try { introVideo.muted = true; introVideo.setAttribute("muted", ""); } catch (e) {}
+    try { introVideo.muted = true; introVideo.setAttribute("muted", ""); introVideo.removeAttribute("autoplay"); introVideo.pause(); } catch (e) {}
     introVideo.addEventListener("canplay", markVideoReady);
     setTimeout(markVideoReady, 9000);
     introVideo.addEventListener("timeupdate", function(){
@@ -451,18 +479,25 @@ body.locked{overflow:hidden}
       if (introVideo.currentTime >= introVideo.duration - 1.1) fadeToInvitation();
     });
     introVideo.addEventListener("ended", function(){ if (tapped) fadeToInvitation(); });
-    introVideo.addEventListener("error", function(){ videoError = true; markVideoReady(); if (tapped) fadeToInvitation(); });
+    introVideo.addEventListener("error", function(){ videoError = true; markVideoReady(); if (tapped) setTimeout(function(){ fadeToInvitation(); }, 800); });
     if (reduceMotion) markVideoReady();
   } else {
     markVideoReady();
   }
   if (introBtn) introBtn.addEventListener("click", openInvitation);
 
-  /* --- 2. Scroll-reveal --- */
-  var io = ("IntersectionObserver" in window) ? new IntersectionObserver(function(entries){
-    entries.forEach(function(e){ if (e.isIntersecting) { e.target.classList.add("visible"); io.unobserve(e.target); } });
-  }, { threshold: 0.12 }) : null;
-  document.querySelectorAll(".reveal").forEach(function(el){ if (io) io.observe(el); else el.classList.add("visible"); });
+  /* --- 2. Scroll-reveal (congelado hasta que abre la invitación) --- */
+  function initReveals(){
+    var io = ("IntersectionObserver" in window) ? new IntersectionObserver(function(entries){
+      entries.forEach(function(e){ if (e.isIntersecting) { e.target.classList.add("visible"); io.unobserve(e.target); } });
+    }, { threshold: 0.12 }) : null;
+    document.querySelectorAll(".reveal").forEach(function(el){ if (io) io.observe(el); else el.classList.add("visible"); });
+  }
+  if (document.body.classList.contains("locked") && document.getElementById("intro")) {
+    window.addEventListener("invitation:open", initReveals, { once: true });
+  } else {
+    initReveals();
+  }
 
   /* --- 3. Smooth scroll cue --- */
   document.querySelectorAll("[data-scroll]").forEach(function(btn){
@@ -614,12 +649,13 @@ body.locked{overflow:hidden}
     restart();
   })();
 
-  /* --- 8. Music: autoplay al abrir + botón dorado (sube song.mp3 al repo) --- */
+  /* --- 8. Music: SOLO suena al dar click "Abrir invitación" + botón toggle --- */
   (function(){
     var audio = document.getElementById("bgMusic"),
         btn = document.getElementById("musicBtn"),
         icon = document.getElementById("musicIcon");
     if (!audio || !btn) return;
+    try { audio.pause(); audio.currentTime = 0; } catch (e) {}
     function paint(){
       var playing = !audio.paused;
       icon.src = playing ? "assets/icon-pause.svg" : "assets/icon-play.svg";
@@ -629,10 +665,6 @@ body.locked{overflow:hidden}
     audio.addEventListener("play", paint);
     audio.addEventListener("pause", paint);
     audio.addEventListener("error", function(){ btn.style.display = "none"; });
-    try { var p = audio.play(); if (p && p.catch) p.catch(function(){}); } catch (e) {}
-    function unlock(){ try { var u = audio.play(); if (u && u.catch) u.catch(function(){}); } catch (e) {} }
-    window.addEventListener("pointerdown", unlock, { once: true });
-    window.addEventListener("keydown", unlock, { once: true });
     btn.addEventListener("click", function(ev){
       ev.stopPropagation();
       if (audio.paused) audio.play().catch(function(){});
