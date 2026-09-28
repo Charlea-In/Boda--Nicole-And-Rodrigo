@@ -129,6 +129,29 @@ function _dedupeGuests(guests) {
   return order;
 }
 
+/** Borra las filas de datos cuyo valor en col A == id (fila 1 = cabecera). */
+function _deleteRowByColA(sh, id) {
+  var last = sh.getLastRow();
+  if (last < 2) return false;
+  var ids = sh.getRange(2, 1, last - 1, 1).getValues();
+  for (var i = ids.length - 1; i >= 0; i--) {
+    if (String(ids[i][0]) === String(id)) sh.deleteRow(i + 2);
+  }
+  return true;
+}
+
+/** Borra filas de datos donde la columna col (1-based) == val. */
+function _deleteRowsWhere(sh, col, val) {
+  var last = sh.getLastRow();
+  if (last < 2) return 0;
+  var vals = sh.getRange(2, col, last - 1, 1).getValues();
+  var n = 0;
+  for (var i = vals.length - 1; i >= 0; i--) {
+    if (String(vals[i][0]) === String(val)) { sh.deleteRow(i + 2); n++; }
+  }
+  return n;
+}
+
 /** Crea las 3 hojas con encabezados. Ejecutar una vez a mano. */
 function setup() {
   var inv = _sheet(SHEET_INVITADOS);
@@ -242,6 +265,42 @@ function doPost(e) {
 
     /* --- Todo lo demás exige la clave compartida --- */
     if (!_keyOk(body.key)) return _json({ ok: false, error: 'key' });
+
+    /* --- Borrado por id (el admin lo llama al eliminar + sync de convergencia).
+           Garantiza que el borrado pega aunque el sync completo falle o compita. --- */
+    if (action === 'deleteGuest') {
+      var gid = String(body.id != null ? body.id : (p.id || ''));
+      if (!gid) return _json({ ok: false, error: 'id' });
+      _deleteRowByColA(_sheetByRole('guests'), gid);
+      var shM = _sheetByRole('mesas');
+      var mLast = shM.getLastRow();
+      if (mLast > 1) {
+        var mInv = shM.getRange(2, 4, mLast - 1, 1).getValues();
+        for (var mi = 0; mi < mInv.length; mi++) {
+          var arr = [];
+          try { arr = JSON.parse(String(mInv[mi][0] || '[]')) || []; } catch (e9) { arr = []; }
+          var f = arr.filter(function (x) { return String(x) !== gid; });
+          if (f.length !== arr.length) shM.getRange(mi + 2, 4).setValue(JSON.stringify(f));
+        }
+      }
+      _deleteRowsWhere(_findRsvpSheet(), 6, gid);
+      return _json({ ok: true });
+    }
+
+    if (action === 'deleteMesa') {
+      var mid = String(body.id != null ? body.id : (p.id || ''));
+      if (!mid) return _json({ ok: false, error: 'id' });
+      _deleteRowByColA(_sheetByRole('mesas'), mid);
+      var shG2 = _sheetByRole('guests');
+      var gLast = shG2.getLastRow();
+      if (gLast > 1) {
+        var gMesa = shG2.getRange(2, 6, gLast - 1, 1).getValues();
+        for (var gi = 0; gi < gMesa.length; gi++) {
+          if (String(gMesa[gi][0]) === mid) shG2.getRange(gi + 2, 6).setValue('');
+        }
+      }
+      return _json({ ok: true });
+    }
 
     if (action === 'saveState') {
       var guests = _dedupeGuests(body.guests || []);

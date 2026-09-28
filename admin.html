@@ -744,8 +744,13 @@
       } catch { return []; }
     }
 
+    /* Contador de mutaciones locales. Si cambia durante un pull,
+       el pull NO pisa lo local (evita "resucitar" borrados). */
+    let stateSeq = 0;
+
     function saveGuests(guests) {
       localStorage.setItem(STORAGE_KEY, JSON.stringify(guests));
+      stateSeq++;
       schedulePush();
     }
 
@@ -755,6 +760,7 @@
     }
     function saveMesas(mesas) {
       localStorage.setItem(MESAS_KEY, JSON.stringify(mesas));
+      stateSeq++;
       schedulePush();
     }
 
@@ -810,18 +816,40 @@
     /* Sube invitados+mesas a Sheets (con debounce). Si no hay nube
        configurada o falla, todo sigue funcionando en local. */
     let pushTimer = null;
+    async function doPush() {
+      const r = await apiPost('saveState', { guests: loadGuests(), mesas: loadMesas() });
+      if (!r || !r.ok) throw new Error('push');
+      setText('cloudStatus', '✓ Sincronizado con Google Sheets');
+      return r;
+    }
     function schedulePush() {
       if (!cloudCfg().scriptUrl) return;
       clearTimeout(pushTimer);
       pushTimer = setTimeout(async () => {
-        try {
-          const r = await apiPost('saveState', { guests: loadGuests(), mesas: loadMesas() });
-          if (!r || !r.ok) throw new Error('push');
-          setText('cloudStatus', '✓ Sincronizado con Google Sheets');
-        } catch (err) {
+        try { await doPush(); }
+        catch (err) {
           setText('cloudStatus', 'Sin conexión — cambios guardados solo en local');
         }
       }, 800);
+    }
+    /* Subida inmediata (borrados): cancela el debounce y sube ya. */
+    async function pushNow() {
+      clearTimeout(pushTimer);
+      if (!cloudCfg().scriptUrl) return { ok: false, error: 'no-cloud' };
+      try { return await doPush(); }
+      catch (err) {
+        setText('cloudStatus', 'Sin conexión — cambios guardados solo en local');
+        schedulePush();
+        return { ok: false, error: 'push' };
+      }
+    }
+    /* Borrado directo de una fila en Sheets por id. Si el despliegue
+       es viejo (sin este endpoint) devuelve {ok:false} y se usa saveState. */
+    async function cloudDelete(action, payload) {
+      try {
+        const r = await apiPost(action, payload || {});
+        return r && r.ok ? r : { ok: false, error: (r && r.error) || 'action' };
+      } catch (err) { return { ok: false, error: 'net' }; }
     }
 
     /* Baja invitados+mesas+RSVP desde Sheets (si hay nube).
@@ -833,6 +861,7 @@
         return;
       }
       try {
+        const seq0 = stateSeq;
         const r = await apiGet('state');
         if (!r || !r.ok) throw new Error('pull');
         const rankSt = s => s === 'si' ? 2 : (s === 'no' ? 1 : 0);
@@ -865,6 +894,12 @@
         });
         const localGuests = loadGuests();
         const localMesas = loadMesas();
+        if (stateSeq !== seq0) {
+          /* Hubo un cambio local (ej. un borrado) durante el pull:
+             no pisar lo local; re-subir para converger con la nube. */
+          schedulePush();
+          return;
+        }
         if (!cloudGuests.length && !cloudMesas.length && (localGuests.length || localMesas.length)) {
           await apiPost('saveState', { guests: localGuests, mesas: localMesas });
           await loadRsvpLog();
@@ -1150,7 +1185,13 @@
       const mesas = loadMesas().map(m => ({ ...m, invitados: m.invitados.filter(gid => gid !== id) }));
       saveMesas(mesas);
       renderTable();
-      showToast('Invitado eliminado.');
+      // Borrado directo en Sheets por id + sync completo de convergencia.
+      (async () => {
+        const del = await cloudDelete('deleteGuest', { id });
+        const push = await pushNow();
+        if (del.ok || push.ok) showToast('✓ Invitado eliminado del Sheet.');
+        else showToast('Eliminado local. Sin conexión al Sheet — se reintentará.');
+      })();
     }
 
     /* ══════════════════════════════
@@ -1375,7 +1416,13 @@
       renderMesas();
       renderConfirmados();
       renderTable();
-      showToast('Mesa eliminada');
+      // Borrado directo en Sheets por id + sync completo de convergencia.
+      (async () => {
+        const del = await cloudDelete('deleteMesa', { id });
+        const push = await pushNow();
+        if (del.ok || push.ok) showToast('✓ Mesa eliminada del Sheet.');
+        else showToast('Eliminada local. Sin conexión al Sheet — se reintentará.');
+      })();
     }
     /* Lugares ocupados de una mesa = suma de pases (no de invitados).
        Ej: un invitado con 4 pases ocupa 4 lugares.
