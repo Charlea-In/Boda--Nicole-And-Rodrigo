@@ -638,7 +638,7 @@
                   <th>Fecha</th>
                   <th>Invitado</th>
                   <th>Asiste</th>
-                  <th>Comida</th>
+                  <th>Mensaje</th>
                   <th></th>
                 </tr>
               </thead>
@@ -835,7 +835,13 @@
       try {
         const r = await apiGet('state');
         if (!r || !r.ok) throw new Error('pull');
-        const cloudGuests = r.guests || [];
+        const seenN = {};
+        const cloudGuests = (r.guests || []).filter(g => {
+          const k = String(g.name || '').trim().toLowerCase();
+          if (!k || seenN[k]) return false;
+          seenN[k] = 1;
+          return true;
+        });
         const cloudMesas = r.mesas || [];
         const localGuests = loadGuests();
         const localMesas = loadMesas();

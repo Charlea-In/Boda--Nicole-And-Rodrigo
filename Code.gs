@@ -44,6 +44,91 @@ function _keyOk(k) {
   return String(k || '') === SHARED_KEY;
 }
 
+function _norm(s) {
+  return String(s == null ? '' : s).replace(/^\s+|\s+$/g, '').toLowerCase();
+}
+
+/** Hoja RSVP: nombre exacto, tolerante, con encabezado RSVP o cualquier hoja con datos. */
+function _findRsvpSheet() {
+  return _sheetByRole('rsvp');
+}
+
+/** Localiza hojas por rol aunque cambien mayúsculas, espacios o nombre:
+    invitados = la que tenga telefono/estado; mesas = capacidad;
+    rsvp = asiste+nombre, o cualquier otra hoja con datos. */
+function _sheetByRole(role) {
+  var want = role === 'guests' ? 'invitados' : (role === 'mesas' ? 'mesas' : 'rsvp');
+  var keys = role === 'guests' ? ['telefono', 'estado']
+           : (role === 'mesas' ? ['capacidad'] : ['asiste']);
+  var sheets = SpreadsheetApp.getActiveSpreadsheet().getSheets();
+  var i, sh;
+  for (i = 0; i < sheets.length; i++) {
+    if (_norm(sheets[i].getName()) === want) return sheets[i];
+  }
+  for (i = 0; i < sheets.length; i++) {
+    if (_headerHas(sheets[i], keys)) return sheets[i];
+  }
+  if (role === 'rsvp') {
+    for (i = 0; i < sheets.length; i++) {
+      if (_headerHas(sheets[i], ['nombre', 'asiste'])) return sheets[i];
+    }
+    var gN = _sheetByRole('guests').getName();
+    var mN = _sheetByRole('mesas').getName();
+    for (i = 0; i < sheets.length; i++) {
+      sh = sheets[i];
+      if (sh.getName() === gN || sh.getName() === mN) continue;
+      if (_dataRows(sh, 7).length) return sh;
+    }
+  }
+  return _sheet(role === 'guests' ? SHEET_INVITADOS : (role === 'mesas' ? SHEET_MESAS : SHEET_RSVP));
+}
+
+function _headerOf(sh) {
+  if (sh.getLastRow() < 1) return [];
+  return sh.getRange(1, 1, 1, Math.min(7, sh.getLastColumn())).getValues()[0].map(_norm);
+}
+
+function _headerHas(sh, words) {
+  var head = _headerOf(sh);
+  return words.every(function (w) { return head.indexOf(w) !== -1; });
+}
+
+/** Filas de datos: salta el encabezado si existe y quita filas vacías. */
+function _dataRows(sh, ncols) {
+  var last = sh.getLastRow();
+  if (last < 1) return [];
+  var vals = sh.getRange(1, 1, last, ncols).getValues();
+  if (vals.length) {
+    var h = vals[0].map(_norm).join('|');
+    if (h.indexOf('nombre') !== -1 || h.indexOf('timestamp') !== -1 ||
+        h.indexOf('capacidad') !== -1 || h.indexOf('invitados') !== -1 ||
+        (h.indexOf('id') !== -1 && h.indexOf('telefono') !== -1)) vals.shift();
+  }
+  return vals.filter(function (r) { return r[0] !== '' && r[0] !== null; });
+}
+
+/** Fusiona duplicados por nombre (varios teléfonos crean el mismo
+    invitado con distinto id): gana el estado más avanzado (si > no > pendiente). */
+function _dedupeGuests(guests) {
+  function rank(s) { return s === 'si' ? 2 : (s === 'no' ? 1 : 0); }
+  var map = {};
+  var order = [];
+  guests.forEach(function (g) {
+    var k = _norm(g.name);
+    if (!k) { order.push(g); return; }
+    if (!map[k]) { map[k] = g; order.push(g); }
+    else {
+      var cur = map[k];
+      if (rank(g.status) > rank(cur.status)) {
+        if (g.mesaId == null) g.mesaId = cur.mesaId;
+        map[k] = g;
+        order[order.indexOf(cur)] = g;
+      }
+    }
+  });
+  return order;
+}
+
 /** Crea las 3 hojas con encabezados. Ejecutar una vez a mano. */
 function setup() {
   var inv = _sheet(SHEET_INVITADOS);
@@ -55,12 +140,8 @@ function setup() {
 }
 
 function _readGuests() {
-  var sh = _sheet(SHEET_INVITADOS);
-  var last = sh.getLastRow();
-  if (last < 2) return [];
-  var vals = sh.getRange(2, 1, last - 1, 6).getValues();
+  var vals = _dataRows(_sheetByRole('guests'), 6);
   return vals
-    .filter(function (r) { return r[0] !== '' && r[0] !== null; })
     .map(function (r) {
       return {
         id: Number(r[0]),
@@ -74,12 +155,8 @@ function _readGuests() {
 }
 
 function _readMesas() {
-  var sh = _sheet(SHEET_MESAS);
-  var last = sh.getLastRow();
-  if (last < 2) return [];
-  var vals = sh.getRange(2, 1, last - 1, 4).getValues();
+  var vals = _dataRows(_sheetByRole('mesas'), 4);
   return vals
-    .filter(function (r) { return r[0] !== '' && r[0] !== null; })
     .map(function (r) {
       var inv = [];
       try { inv = JSON.parse(String(r[3] || '[]')) || []; } catch (e) { inv = []; }
@@ -93,10 +170,7 @@ function _readMesas() {
 }
 
 function _readRsvp() {
-  var sh = _sheet(SHEET_RSVP);
-  var last = sh.getLastRow();
-  if (last < 2) return [];
-  var vals = sh.getRange(2, 1, last - 1, 7).getValues();
+  var vals = _dataRows(_findRsvpSheet(), 7);
   return vals.map(function (r) {
     return {
       timestamp: r[0] instanceof Date ? r[0].toISOString() : String(r[0] || ''),
@@ -139,15 +213,30 @@ function doPost(e) {
     if (action === 'rsvp' || body.nombre || p.name) {
       var choice = body.asiste || p.asiste || p.choice || '';
       var asiste = (choice === 'si' || choice === 'accepts') ? 'si' : 'no';
-      _sheet(SHEET_RSVP).appendRow([
+      var gid = String(body.guestId || p.guestId || p.id || '');
+      _findRsvpSheet().appendRow([
         new Date(),
         body.nombre || p.nombre || p.name || '',
         parseInt(body.pases || p.pases || p.party, 10) || 0,
         asiste,
         body.mensaje || p.mensaje || p.message || '',
-        body.guestId || p.guestId || p.id || '',
+        gid,
         body.link || p.link || ''
       ]);
+      /* Auto-confirmación: si el link traía id, marca al invitado */
+      if (gid !== '') {
+        var shG = _sheetByRole('guests');
+        var lastG = shG.getLastRow();
+        if (lastG > 1) {
+          var ids = shG.getRange(2, 1, lastG - 1, 1).getValues();
+          for (var k = 0; k < ids.length; k++) {
+            if (String(ids[k][0]) === gid) {
+              shG.getRange(k + 2, 5).setValue(asiste);
+              break;
+            }
+          }
+        }
+      }
       return _json({ ok: true });
     }
 
@@ -155,14 +244,14 @@ function doPost(e) {
     if (!_keyOk(body.key)) return _json({ ok: false, error: 'key' });
 
     if (action === 'saveState') {
-      var guests = body.guests || [];
+      var guests = _dedupeGuests(body.guests || []);
       var mesas = body.mesas || [];
-      var shG = _sheet(SHEET_INVITADOS);
+      var shG = _sheetByRole('guests');
       if (shG.getLastRow() > 1) shG.getRange(2, 1, shG.getLastRow() - 1, 6).clearContent();
       guests.forEach(function (g) {
         shG.appendRow([g.id, g.name || '', g.phone || '', g.seats || 1, g.status || 'pendiente', g.mesaId == null ? '' : g.mesaId]);
       });
-      var shM = _sheet(SHEET_MESAS);
+      var shM = _sheetByRole('mesas');
       if (shM.getLastRow() > 1) shM.getRange(2, 1, shM.getLastRow() - 1, 4).clearContent();
       mesas.forEach(function (m) {
         shM.appendRow([m.id, m.nombre || '', m.capacidad || 6, JSON.stringify(m.invitados || [])]);
