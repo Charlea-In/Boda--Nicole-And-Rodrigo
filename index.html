@@ -40,6 +40,17 @@ body{
 img{display:block;max-width:100%}
 a{color:inherit}
 :focus-visible{outline:3px solid var(--sage-deep-hex);outline-offset:3px;border-radius:6px}
+/* ---------- intro overlay ---------- */
+body.locked{overflow:hidden}
+.intro{position:fixed;inset:0;z-index:100;display:flex;align-items:center;justify-content:center;text-align:center;color:#FFF8EC;transition:opacity 2s ease,visibility 2s}
+.intro video{position:absolute;inset:0;width:100%;height:100%;object-fit:cover}
+.intro.hide{opacity:0;visibility:hidden;pointer-events:none}
+.intro-open{position:absolute;bottom:36px;left:50%;transform:translateX(-50%);min-height:44px;white-space:nowrap;padding:10px 26px;border-radius:999px;border:1.5px solid #FFF8EC;background:rgba(255,248,236,.12);color:#FFF8EC;font-family:var(--body);font-weight:600;font-size:10px;letter-spacing:.24em;text-transform:uppercase;cursor:pointer;backdrop-filter:blur(4px);transition:background .2s ease}
+.intro-open:hover{background:var(--sage-deep-hex);border-color:var(--sage-deep-hex)}
+.intro-open:disabled{opacity:.45;cursor:wait}
+.intro-open.fadeout{opacity:0;transition:opacity .5s ease;pointer-events:none}
+.intro-open:not(:disabled){animation:glow 2.4s ease-in-out infinite}
+@keyframes glow{0%,100%{box-shadow:0 0 0 0 rgba(255,248,236,.35)}50%{box-shadow:0 0 0 12px rgba(255,248,236,0)}}
 /* ---------- full-screen sections (sin barra, tarjetas a pantalla completa) ---------- */
 .deck{
   display:grid;grid-template-columns:1fr;gap:0;
@@ -60,7 +71,7 @@ a{color:inherit}
 /* reveal */
 .reveal{opacity:0;transform:translateY(26px);transition:opacity .8s ease,transform .8s ease}
 .reveal.visible{opacity:1;transform:none}
-@media(prefers-reduced-motion:reduce){.reveal{opacity:1;transform:none;transition:none}html{scroll-behavior:auto}.hero-bg img{animation:none}.hero [data-rise]{animation:none;opacity:1;transform:none}}
+@media(prefers-reduced-motion:reduce){.reveal{opacity:1;transform:none;transition:none}html{scroll-behavior:auto}.hero-bg img{animation:none}.hero [data-rise]{animation:none;opacity:1;transform:none}.intro-open:not(:disabled){animation:none}}
 /* ---------- HERO ---------- */
 .hero{min-height:100svh;color:#FFF8EC;text-align:center;isolation:isolate}
 .hero-bg{position:absolute;inset:0;z-index:-2}
@@ -214,8 +225,13 @@ a{color:inherit}
   .itin::before{left:51px}
 }
 </style>
+<noscript><style>.intro{display:none!important}body.locked{overflow:auto}</style></noscript>
 </head>
-<body>
+<body class="locked">
+<div class="intro" id="intro" data-od-id="intro-overlay" role="dialog" aria-label="Bienvenida">
+  <video id="introVideo" src="assets/intro.mp4" muted playsinline preload="auto" aria-hidden="true"></video>
+    <button class="intro-open" id="introOpen" data-od-id="intro-open" disabled>Cargando…</button>
+</div>
 <main class="deck" data-od-id="invitation-deck">
 
   <!-- 1 HERO -->
@@ -397,6 +413,51 @@ a{color:inherit}
   }
   function escapeHtml(s){ return String(s).replace(/[&<>"']/g, function(c){ return {"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]; }); }
 
+  /* --- 1b. Intro definitivo: el video espera el tap, suena la música,
+         el fade de 2s arranca al final del video (7.5-8s). --- */
+  var intro = document.getElementById("intro");
+  var introBtn = document.getElementById("introOpen");
+  var introVideo = document.getElementById("introVideo");
+  var reduceMotion = window.matchMedia && window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+  var tapped = false, fading = false, videoError = false, videoReady = false;
+  function playSafe(el){ try { var pr = el.play(); if (pr && pr.catch) pr.catch(function(){}); } catch (e) {} }
+  function markVideoReady(){
+    if (videoReady) return;
+    videoReady = true;
+    if (introBtn && !tapped) { introBtn.disabled = false; introBtn.textContent = "Abrir invitación"; }
+  }
+  function fadeToInvitation(){
+    if (!intro || fading) return;
+    fading = true;
+    intro.classList.add("hide");
+    document.body.classList.remove("locked");
+    setTimeout(function(){ if (intro && intro.parentNode) intro.parentNode.removeChild(intro); }, 2100);
+  }
+  function openInvitation(){
+    if (!intro || fading) return;
+    tapped = true;
+    if (introBtn) { introBtn.disabled = true; introBtn.classList.add("fadeout"); }
+    var audioEl = document.getElementById("bgMusic");
+    if (audioEl) playSafe(audioEl);
+    if (!introVideo || reduceMotion || videoError || introVideo.ended) fadeToInvitation();
+    else playSafe(introVideo);
+  }
+  if (introVideo) {
+    try { introVideo.muted = true; introVideo.setAttribute("muted", ""); } catch (e) {}
+    introVideo.addEventListener("canplay", markVideoReady);
+    setTimeout(markVideoReady, 9000);
+    introVideo.addEventListener("timeupdate", function(){
+      if (!tapped || fading || !introVideo.duration) return;
+      if (introVideo.currentTime >= introVideo.duration - 1.1) fadeToInvitation();
+    });
+    introVideo.addEventListener("ended", function(){ if (tapped) fadeToInvitation(); });
+    introVideo.addEventListener("error", function(){ videoError = true; markVideoReady(); if (tapped) fadeToInvitation(); });
+    if (reduceMotion) markVideoReady();
+  } else {
+    markVideoReady();
+  }
+  if (introBtn) introBtn.addEventListener("click", openInvitation);
+
   /* --- 2. Scroll-reveal --- */
   var io = ("IntersectionObserver" in window) ? new IntersectionObserver(function(entries){
     entries.forEach(function(e){ if (e.isIntersecting) { e.target.classList.add("visible"); io.unobserve(e.target); } });
@@ -569,7 +630,7 @@ a{color:inherit}
     audio.addEventListener("pause", paint);
     audio.addEventListener("error", function(){ btn.style.display = "none"; });
     try { var p = audio.play(); if (p && p.catch) p.catch(function(){}); } catch (e) {}
-    function unlock(){ audio.play().catch(function(){}); }
+    function unlock(){ try { var u = audio.play(); if (u && u.catch) u.catch(function(){}); } catch (e) {} }
     window.addEventListener("pointerdown", unlock, { once: true });
     window.addEventListener("keydown", unlock, { once: true });
     btn.addEventListener("click", function(ev){
