@@ -835,14 +835,34 @@
       try {
         const r = await apiGet('state');
         if (!r || !r.ok) throw new Error('pull');
-        const seenN = {};
-        const cloudGuests = (r.guests || []).filter(g => {
+        const rankSt = s => s === 'si' ? 2 : (s === 'no' ? 1 : 0);
+        const byName = {};
+        const cloudGuests = [];
+        (r.guests || []).forEach(g => {
           const k = String(g.name || '').trim().toLowerCase();
-          if (!k || seenN[k]) return false;
-          seenN[k] = 1;
+          if (!k) { cloudGuests.push(g); return; }
+          if (!byName[k]) { byName[k] = g; cloudGuests.push(g); }
+          else {
+            const cur = byName[k];
+            if (rankSt(g.status) > rankSt(cur.status)) {
+              if (g.mesaId == null) g.mesaId = cur.mesaId;
+              if (!g.phone) g.phone = cur.phone;
+              if (!g.seats) g.seats = cur.seats;
+              cloudGuests[cloudGuests.indexOf(cur)] = g;
+              byName[k] = g;
+            } else {
+              if (cur.mesaId == null) cur.mesaId = g.mesaId;
+              if (!cur.phone) cur.phone = g.phone;
+            }
+          }
+        });
+        const seenM = {};
+        const cloudMesas = (r.mesas || []).filter(m => {
+          const k = String(m.id);
+          if (seenM[k]) return false;
+          seenM[k] = 1;
           return true;
         });
-        const cloudMesas = r.mesas || [];
         const localGuests = loadGuests();
         const localMesas = loadMesas();
         if (!cloudGuests.length && !cloudMesas.length && (localGuests.length || localMesas.length)) {
@@ -882,6 +902,23 @@
       try {
         const r = await apiGet('rsvpLog');
         const rows = (r && r.ok && r.rsvp) || [];
+        // Auto-aplica cada respuesta al invitado (por id, o por nombre):
+        // la lista se actualiza sola sin tocar nada.
+        let guestsNow = loadGuests();
+        let touched = false;
+        rows.forEach(row => {
+          const st = row.asiste === 'si' ? 'si' : 'no';
+          let g = null;
+          if (row.guestId !== '' && row.guestId != null) {
+            g = guestsNow.find(x => String(x.id) === String(row.guestId));
+          }
+          if (!g && row.nombre) {
+            const k = String(row.nombre).trim().toLowerCase();
+            g = guestsNow.find(x => String(x.name || '').trim().toLowerCase() === k);
+          }
+          if (g && g.status !== st) { g.status = st; touched = true; }
+        });
+        if (touched) { saveGuests(guestsNow); renderTable(); schedulePush(); }
         setText('rsvpCount', rows.length ? `${rows.length} respuestas` : '');
         setText('navRsvp', rows.length);
         if (!rows.length) {
