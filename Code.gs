@@ -21,10 +21,24 @@
 var SHARED_KEY = 'nicoleyrodrigo2026';
 /* Sube este número cada vez que cambies este archivo para que el admin
    detecte despliegues viejos. */
-var CODE_VERSION = 3;
+var CODE_VERSION = 4;
 var SHEET_INVITADOS = 'Invitados';
 var SHEET_MESAS = 'Mesas';
 var SHEET_RSVP = 'RSVP';
+
+/* Cabeceras oficiales de cada hoja. */
+var HEADERS = {
+  guests: ['id', 'nombre', 'telefono', 'pases', 'estado', 'mesaId'],
+  mesas: ['id', 'nombre', 'capacidad', 'invitados'],
+  rsvp: ['timestamp', 'nombre', 'pases', 'asiste', 'mensaje', 'guestId', 'link']
+};
+
+/* Normaliza cabeceras: minúsculas, sin espacios ni tildes. */
+function _normH(s) {
+  return String(s == null ? '' : s).replace(/^\s+|\s+$/g, '').toLowerCase()
+    .replace(/[áàäâ]/g, 'a').replace(/[éèëê]/g, 'e').replace(/[íìïî]/g, 'i')
+    .replace(/[óòöô]/g, 'o').replace(/[úùüû]/g, 'u').replace(/ñ/g, 'n');
+}
 
 function _sheet(name) {
   var ss = SpreadsheetApp.getActiveSpreadsheet();
@@ -88,7 +102,7 @@ function _sheetByRole(role) {
 
 function _headerOf(sh) {
   if (sh.getLastRow() < 1) return [];
-  return sh.getRange(1, 1, 1, Math.min(7, sh.getLastColumn())).getValues()[0].map(_norm);
+  return sh.getRange(1, 1, 1, Math.min(10, sh.getLastColumn())).getValues()[0].map(_normH);
 }
 
 function _headerHas(sh, words) {
@@ -132,27 +146,102 @@ function _dedupeGuests(guests) {
   return order;
 }
 
-/** Borra las filas de datos cuyo valor en col A == id (fila 1 = cabecera). */
-function _deleteRowByColA(sh, id) {
-  var last = sh.getLastRow();
-  if (last < 2) return false;
-  var ids = sh.getRange(2, 1, last - 1, 1).getValues();
-  for (var i = ids.length - 1; i >= 0; i--) {
-    if (String(ids[i][0]) === String(id)) sh.deleteRow(i + 2);
-  }
-  return true;
+/** Garantiza la fila 1 de cabecera. Si la fila 1 trae datos (hoja editada
+    a mano sin cabecera), inserta la cabecera arriba en vez de asumirla:
+    así la fila 1 nunca queda como dato inmortal. */
+function _ensureHeader(sh, headers) {
+  if (sh.getLastRow() < 1) { sh.appendRow(headers); return; }
+  var a1 = _normH(sh.getRange(1, 1).getValue());
+  if (a1 === 'id' || a1 === 'timestamp') return;
+  sh.insertRowBefore(1);
+  sh.getRange(1, 1, 1, headers.length).setValues([headers]);
 }
 
-/** Borra filas de datos donde la columna col (1-based) == val. */
-function _deleteRowsWhere(sh, col, val) {
+/** Mapea cada nombre lógico a su columna real según la fila 1.
+    Tolera columnas extra o movidas; si falta, usa la posición oficial. */
+function _colMap(sh, headers) {
+  var n = Math.max(headers.length, sh.getLastColumn());
+  var head = n > 0 ? sh.getRange(1, 1, 1, n).getValues()[0].map(_normH) : [];
+  var map = {};
+  headers.forEach(function (h, i) {
+    var idx = head.indexOf(_normH(h));
+    map[h] = idx !== -1 ? idx + 1 : i + 1;
+  });
+  return map;
+}
+
+/** Ids de la columna A (tope 1000) para diagnóstico. */
+function _colAIds(sh) {
+  var last = sh.getLastRow();
+  if (last < 2) return [];
+  var n = Math.min(last - 1, 1000);
+  return sh.getRange(2, 1, n, 1).getValues().map(function (r) { return String(r[0]); });
+}
+
+function _trimId(v) { return String(v == null ? '' : v).replace(/^\s+|\s+$/g, ''); }
+
+/** Borra TODAS las filas de datos con ese id en su columna (tolera espacios).
+    Devuelve cuántas borró. */
+function _deleteRowById(sh, headers, id) {
+  _ensureHeader(sh, headers);
+  var col = _colMap(sh, headers).id;
+  var want = _trimId(id);
+  if (!want) return 0;
   var last = sh.getLastRow();
   if (last < 2) return 0;
   var vals = sh.getRange(2, col, last - 1, 1).getValues();
   var n = 0;
   for (var i = vals.length - 1; i >= 0; i--) {
-    if (String(vals[i][0]) === String(val)) { sh.deleteRow(i + 2); n++; }
+    if (_trimId(vals[i][0]) === want) { sh.deleteRow(i + 2); n++; }
   }
   return n;
+}
+
+/** Borra filas de datos donde la columna col (1-based) == val. Devuelve conteo. */
+function _deleteRowsWhere(sh, col, val) {
+  var last = sh.getLastRow();
+  if (last < 2) return 0;
+  var want = _trimId(val);
+  if (!want) return 0;
+  var vals = sh.getRange(2, col, last - 1, 1).getValues();
+  var n = 0;
+  for (var i = vals.length - 1; i >= 0; i--) {
+    if (_trimId(vals[i][0]) === want) { sh.deleteRow(i + 2); n++; }
+  }
+  return n;
+}
+
+/** Limpia todas las filas de datos (fila 1 = cabecera) en todo el ancho. */
+function _clearData(sh) {
+  var last = sh.getLastRow();
+  if (last < 2) return;
+  sh.getRange(2, 1, last - 1, Math.min(Math.max(4, sh.getLastColumn()), 50)).clearContent();
+}
+
+/** Arma una fila en las columnas reales del mapa. */
+function _mappedRow(map, headers, vals) {
+  var width = 0;
+  headers.forEach(function (h) { if (map[h] > width) width = map[h]; });
+  var row = [];
+  for (var i = 0; i < width; i++) row.push('');
+  headers.forEach(function (h) { row[map[h] - 1] = vals[h] == null ? '' : vals[h]; });
+  return row;
+}
+
+/** Fusiona mesas con id repetido: conserva la que tenga más invitados. */
+function _dedupeMesas(mesas) {
+  var map = {};
+  var order = [];
+  mesas.forEach(function (mm) {
+    var k = String(mm.id);
+    if (!map[k]) { map[k] = mm; order.push(mm); }
+    else {
+      var cur = map[k];
+      var a = (cur.invitados || []).length, b = (mm.invitados || []).length;
+      if (b > a) { order[order.indexOf(cur)] = mm; map[k] = mm; }
+    }
+  });
+  return order;
 }
 
 /** Crea las 3 hojas con encabezados. Ejecutar una vez a mano. */
@@ -166,48 +255,68 @@ function setup() {
 }
 
 function _readGuests() {
-  var vals = _dataRows(_sheetByRole('guests'), 6);
+  var sh = _sheetByRole('guests');
+  _ensureHeader(sh, HEADERS.guests);
+  var m = _colMap(sh, HEADERS.guests);
+  var last = sh.getLastRow();
+  if (last < 2) return [];
+  var vals = sh.getRange(2, 1, last - 1, sh.getLastColumn()).getValues();
   return vals
+    .filter(function (r) { return _trimId(r[m.id - 1]) !== ''; })
     .map(function (r) {
+      var mesaRaw = r[m.mesaId - 1];
       return {
-        id: Number(r[0]),
-        name: String(r[1] || ''),
-        phone: String(r[2] || ''),
-        seats: parseInt(r[3], 10) || 1,
-        status: String(r[4] || 'pendiente'),
-        mesaId: r[5] === '' || r[5] === null ? null : Number(r[5])
+        id: Number(r[m.id - 1]),
+        name: String(r[m.nombre - 1] || ''),
+        phone: String(r[m.telefono - 1] || ''),
+        seats: parseInt(r[m.pases - 1], 10) || 1,
+        status: String(r[m.estado - 1] || 'pendiente'),
+        mesaId: mesaRaw === '' || mesaRaw == null ? null : Number(mesaRaw)
       };
     });
 }
 
 function _readMesas() {
-  var vals = _dataRows(_sheetByRole('mesas'), 4);
+  var sh = _sheetByRole('mesas');
+  _ensureHeader(sh, HEADERS.mesas);
+  var m = _colMap(sh, HEADERS.mesas);
+  var last = sh.getLastRow();
+  if (last < 2) return [];
+  var vals = sh.getRange(2, 1, last - 1, sh.getLastColumn()).getValues();
   return vals
+    .filter(function (r) { return _trimId(r[m.id - 1]) !== ''; })
     .map(function (r) {
       var inv = [];
-      try { inv = JSON.parse(String(r[3] || '[]')) || []; } catch (e) { inv = []; }
+      try { inv = JSON.parse(String(r[m.invitados - 1] || '[]')) || []; } catch (e) { inv = []; }
       return {
-        id: Number(r[0]),
-        nombre: String(r[1] || ''),
-        capacidad: parseInt(r[2], 10) || 6,
+        id: Number(r[m.id - 1]),
+        nombre: String(r[m.nombre - 1] || ''),
+        capacidad: parseInt(r[m.capacidad - 1], 10) || 6,
         invitados: inv
       };
     });
 }
 
 function _readRsvp() {
-  var vals = _dataRows(_findRsvpSheet(), 7);
-  return vals.map(function (r) {
-    return {
-      timestamp: r[0] instanceof Date ? r[0].toISOString() : String(r[0] || ''),
-      nombre: String(r[1] || ''),
-      pases: parseInt(r[2], 10) || 1,
-      asiste: String(r[3] || 'si'),
-      mensaje: String(r[4] || ''),
-      guestId: String(r[5] || ''),
-      link: String(r[6] || '')
-    };
-  });
+  var sh = _findRsvpSheet();
+  _ensureHeader(sh, HEADERS.rsvp);
+  var m = _colMap(sh, HEADERS.rsvp);
+  var last = sh.getLastRow();
+  if (last < 2) return [];
+  var vals = sh.getRange(2, 1, last - 1, sh.getLastColumn()).getValues();
+  return vals
+    .filter(function (r) { return _trimId(r[m.nombre - 1]) !== '' || _trimId(r[m.timestamp - 1]) !== ''; })
+    .map(function (r) {
+      return {
+        timestamp: r[m.timestamp - 1] instanceof Date ? r[m.timestamp - 1].toISOString() : String(r[m.timestamp - 1] || ''),
+        nombre: String(r[m.nombre - 1] || ''),
+        pases: parseInt(r[m.pases - 1], 10) || 1,
+        asiste: String(r[m.asiste - 1] || 'si'),
+        mensaje: String(r[m.mensaje - 1] || ''),
+        guestId: String(r[m.guestId - 1] || ''),
+        link: String(r[m.link - 1] || '')
+      };
+    });
 }
 
 /* LECTURA: ?action=state | ?action=rsvpLog (ambas con &key=...) */
@@ -274,49 +383,83 @@ function doPost(e) {
     if (action === 'deleteGuest') {
       var gid = String(body.id != null ? body.id : (p.id || ''));
       if (!gid) return _json({ ok: false, error: 'id' });
-      _deleteRowByColA(_sheetByRole('guests'), gid);
+      var shG0 = _sheetByRole('guests');
+      var gDel = _deleteRowById(shG0, HEADERS.guests, gid);
       var shM = _sheetByRole('mesas');
+      _ensureHeader(shM, HEADERS.mesas);
+      var mMap = _colMap(shM, HEADERS.mesas);
       var mLast = shM.getLastRow();
       if (mLast > 1) {
-        var mInv = shM.getRange(2, 4, mLast - 1, 1).getValues();
+        var mInv = shM.getRange(2, mMap.invitados, mLast - 1, 1).getValues();
         for (var mi = 0; mi < mInv.length; mi++) {
           var arr = [];
           try { arr = JSON.parse(String(mInv[mi][0] || '[]')) || []; } catch (e9) { arr = []; }
-          var f = arr.filter(function (x) { return String(x) !== gid; });
-          if (f.length !== arr.length) shM.getRange(mi + 2, 4).setValue(JSON.stringify(f));
+          var f = arr.filter(function (x) { return _trimId(x) !== _trimId(gid); });
+          if (f.length !== arr.length) shM.getRange(mi + 2, mMap.invitados).setValue(JSON.stringify(f));
         }
       }
-      _deleteRowsWhere(_findRsvpSheet(), 6, gid);
-      return _json({ ok: true });
+      var shR0 = _findRsvpSheet();
+      _ensureHeader(shR0, HEADERS.rsvp);
+      var rDel = _deleteRowsWhere(shR0, _colMap(shR0, HEADERS.rsvp).guestId, gid);
+      return _json({ ok: true, sheet: shG0.getName(), deletedGuests: gDel, deletedRsvp: rDel });
     }
 
     if (action === 'deleteMesa') {
       var mid = String(body.id != null ? body.id : (p.id || ''));
       if (!mid) return _json({ ok: false, error: 'id' });
-      _deleteRowByColA(_sheetByRole('mesas'), mid);
+      var shM0 = _sheetByRole('mesas');
+      var mDel = _deleteRowById(shM0, HEADERS.mesas, mid);
       var shG2 = _sheetByRole('guests');
+      _ensureHeader(shG2, HEADERS.guests);
+      var gMap = _colMap(shG2, HEADERS.guests);
       var gLast = shG2.getLastRow();
+      var cleared = 0;
       if (gLast > 1) {
-        var gMesa = shG2.getRange(2, 6, gLast - 1, 1).getValues();
+        var gMesa = shG2.getRange(2, gMap.mesaId, gLast - 1, 1).getValues();
         for (var gi = 0; gi < gMesa.length; gi++) {
-          if (String(gMesa[gi][0]) === mid) shG2.getRange(gi + 2, 6).setValue('');
+          if (_trimId(gMesa[gi][0]) === _trimId(mid)) { shG2.getRange(gi + 2, gMap.mesaId).setValue(''); cleared++; }
         }
       }
-      return _json({ ok: true });
+      return _json({ ok: true, sheet: shM0.getName(), deletedMesas: mDel, guestsCleared: cleared });
+    }
+
+    /* --- Diagnóstico: qué archivo y pestañas ve el backend (para depurar) --- */
+    if (action === 'debug') {
+      var ss = SpreadsheetApp.getActiveSpreadsheet();
+      var tabs = ss.getSheets().map(function (sh) {
+        return { name: sh.getName(), rows: sh.getLastRow(), cols: sh.getLastColumn(), head: _headerOf(sh) };
+      });
+      var dg = _sheetByRole('guests');
+      var dm = _sheetByRole('mesas');
+      return _json({ ok: true, version: CODE_VERSION, file: ss.getName(),
+        tabs: tabs, guestsTab: dg.getName(), guestsCols: _colMap(dg, HEADERS.guests),
+        mesasTab: dm.getName(), mesasCols: _colMap(dm, HEADERS.mesas),
+        guestIds: _colAIds(dg), mesaIds: _colAIds(dm) });
     }
 
     if (action === 'saveState') {
       var guests = _dedupeGuests(body.guests || []);
-      var mesas = body.mesas || [];
+      var mesas = _dedupeMesas(body.mesas || []);
       var shG = _sheetByRole('guests');
-      if (shG.getLastRow() > 1) shG.getRange(2, 1, shG.getLastRow() - 1, 6).clearContent();
+      _ensureHeader(shG, HEADERS.guests);
+      var gm = _colMap(shG, HEADERS.guests);
+      _clearData(shG);
       guests.forEach(function (g) {
-        shG.appendRow([g.id, g.name || '', g.phone || '', g.seats || 1, g.status || 'pendiente', g.mesaId == null ? '' : g.mesaId]);
+        shG.appendRow(_mappedRow(gm, HEADERS.guests, {
+          id: g.id, nombre: g.name || '', telefono: g.phone || '',
+          pases: g.seats || 1, estado: g.status || 'pendiente',
+          mesaId: g.mesaId == null ? '' : g.mesaId
+        }));
       });
       var shM = _sheetByRole('mesas');
-      if (shM.getLastRow() > 1) shM.getRange(2, 1, shM.getLastRow() - 1, 4).clearContent();
+      _ensureHeader(shM, HEADERS.mesas);
+      var mm = _colMap(shM, HEADERS.mesas);
+      _clearData(shM);
       mesas.forEach(function (m) {
-        shM.appendRow([m.id, m.nombre || '', m.capacidad || 6, JSON.stringify(m.invitados || [])]);
+        shM.appendRow(_mappedRow(mm, HEADERS.mesas, {
+          id: m.id, nombre: m.nombre || '', capacidad: m.capacidad || 6,
+          invitados: JSON.stringify(m.invitados || [])
+        }));
       });
       return _json({ ok: true });
     }

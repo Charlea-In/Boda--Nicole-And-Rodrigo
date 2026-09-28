@@ -714,6 +714,10 @@
           </div>
           <p class="hint" id="cloudStatus">Modo local — pega el URL de Sheets para sincronizar.</p>
           <p class="hint" id="buildTag"></p>
+          <div style="margin-top:10px; display:flex; gap:8px; align-items:center; flex-wrap:wrap;">
+            <button class="btn btn--outline" onclick="showDebug()">Ver diagnóstico del Sheet</button>
+          </div>
+          <pre id="debugOut" style="display:none; margin-top:8px; padding:10px; background:var(--bg); border:1px solid var(--border); border-radius:10px; font-size:0.72rem; line-height:1.5; white-space:pre-wrap; word-break:break-word; max-height:260px; overflow:auto;"></pre>
         </div>
       </div>
 
@@ -733,8 +737,8 @@
     const MESAS_KEY   = 'cpl_mesas_nr';
     /* Versión del Code.gs esperada. Si el Sheet responde con una menor
        (o sin versión), el despliegue está viejo y hay que re-desplegar. */
-    const EXPECTED_GAS = 3;
-    const ADMIN_BUILD = '2026-09-28f';
+    const EXPECTED_GAS = 4;
+    const ADMIN_BUILD = '2026-09-28g';
 
     /* Revisa la versión del despliegue en cada respuesta de lectura.
        Devuelve true si está al día; si no, avisa y sigue (modo compatible). */
@@ -859,6 +863,21 @@
         return { ok: false, error: 'push' };
       }
     }
+    /* Muestra qué archivo, pestañas e ids ve el backend (para depurar). */
+    async function showDebug() {
+      const out = document.getElementById('debugOut');
+      out.style.display = 'block';
+      out.textContent = 'Consultando…';
+      const r = await cloudDelete('debug', {});
+      if (!r || !r.ok) { out.textContent = 'Sin respuesta del Sheet (' + ((r && r.error) || 'red') + ').'; return; }
+      out.textContent =
+        'Archivo: ' + (r.file || '?') + ' · backend v' + (r.version || '?') + '\n' +
+        'Hoja invitados: ' + r.guestsTab + ' ' + JSON.stringify(r.guestsCols || {}) + '\n' +
+        'Hoja mesas: ' + r.mesasTab + ' ' + JSON.stringify(r.mesasCols || {}) + '\n' +
+        'Pestañas: ' + (r.tabs || []).map(t => t.name + ' (' + t.rows + ' filas, head: ' + (t.head || []).join('|') + ')').join(' · ') + '\n' +
+        'IDs mesas en Sheet: ' + (r.mesaIds || []).join(', ');
+    }
+
     /* Borrado directo de una fila en Sheets por id. Si el despliegue
        es viejo (sin este endpoint) devuelve {ok:false} y se usa saveState. */
     async function cloudDelete(action, payload) {
@@ -1210,7 +1229,9 @@
       (async () => {
         const del = await cloudDelete('deleteGuest', { id });
         const push = await pushNow();
-        if (del.ok || push.ok) showToast('✓ Invitado eliminado del Sheet.');
+        if (del.ok && (del.deletedGuests || 0) > 0) showToast('✓ Invitado eliminado del Sheet (' + del.deletedGuests + ' fila(s), hoja ' + (del.sheet || '?') + ').');
+        else if (del.ok) showToast('Ojo: el Sheet no tenía ese id. Revisa el diagnóstico.');
+        else if (push.ok) showToast('✓ Sincronizado con el Sheet (sync completo).');
         else showToast('Eliminado local. Sheet dice: ' + (del.error || push.error || '?') + ' — se reintentará.');
       })();
     }
@@ -1441,7 +1462,9 @@
       (async () => {
         const del = await cloudDelete('deleteMesa', { id });
         const push = await pushNow();
-        if (del.ok || push.ok) showToast('✓ Mesa eliminada del Sheet.');
+        if (del.ok && (del.deletedMesas || 0) > 0) showToast('✓ Mesa eliminada del Sheet (' + del.deletedMesas + ' fila(s), hoja ' + (del.sheet || '?') + ').');
+        else if (del.ok) showToast('Ojo: el Sheet no tenía ese id. Revisa el diagnóstico.');
+        else if (push.ok) showToast('✓ Sincronizado con el Sheet (sync completo).');
         else showToast('Eliminada local. Sheet dice: ' + (del.error || push.error || '?') + ' — se reintentará.');
       })();
     }
