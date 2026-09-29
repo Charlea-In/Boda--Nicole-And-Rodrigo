@@ -222,6 +222,11 @@ body.locked .hero-bg img{animation:none !important}
 .btn:active{transform:scale(.99)}
 .btn:disabled{opacity:.6;cursor:wait}
 .form-note{font-size:11.5px;color:var(--muted-hex);text-align:center;min-height:20px;margin:10px 0 0;line-height:1.6}
+.cal-wrap{margin-top:14px;text-align:center}
+.cal-wrap[hidden]{display:none}
+.btn--ghost{background:transparent;color:var(--sage-deep-hex);border:1.5px solid var(--sage-deep-hex);text-decoration:none;display:flex;align-items:center;justify-content:center}
+.btn--ghost:hover{background:#F1E3C2}
+.cal-glink{display:inline-block;margin-top:10px;font-size:11px;letter-spacing:.14em;text-transform:uppercase;color:var(--sage-deep-hex);text-underline-offset:3px}
 /* ---------- closing: single full photo with overlaid text ---------- */
 .closing{min-height:110svh;color:#FFF8EC;text-align:center;justify-content:center}
 .closing-bg{position:absolute;inset:0}
@@ -384,6 +389,10 @@ body.locked .hero-bg img{animation:none !important}
       <p class="thanks" id="rsvpThanks" role="status" aria-live="polite"></p>
       <button class="btn" type="submit" id="rsvpBtn" data-od-id="rsvp-submit">Enviar confirmación</button>
       <p class="form-note" id="rsvpNote" role="status" aria-live="polite"></p>
+      <div class="cal-wrap" id="calWrap" hidden>
+        <a class="btn btn--ghost" id="calIcs" download="boda-nicole-rodrigo.ics" href="#" data-od-id="cal-ics">Guardar en calendario</a>
+        <a class="cal-glink" href="https://calendar.google.com/calendar/render?action=TEMPLATE&amp;text=Boda%20Nicole%20%26%20Rodrigo&amp;dates=20261121T223000Z/20261122T023000Z&amp;details=Ceremonia%20y%20recepci%C3%B3n%20%E2%80%A2%20Ministerio%20Cristiano%20Internacional%20R%C3%ADo%20de%20Gloria&amp;location=Ministerio%20Cristiano%20Internacional%20R%C3%ADo%20de%20Gloria%2C%20San%20Salvador" target="_blank" rel="noopener" data-od-id="cal-google">o abrir en Google Calendar</a>
+      </div>
     </form>
   </article>
 
@@ -581,13 +590,36 @@ body.locked .hero-bg img{animation:none !important}
     if (!GOOGLE_APPS_SCRIPT_URL) {
       note.textContent = "Guardado en este dispositivo. El anfitrión lo sincronizará desde el admin.";
       btn.disabled = false; btn.textContent = "Enviar confirmación";
+      if (choice !== "declines") enableCalendar();
       return;
     }
     fetch(GOOGLE_APPS_SCRIPT_URL, { method: "POST", headers: { "Content-Type": "text/plain" }, body: JSON.stringify(payload) })
       .then(function(r){ return r.json(); })
-      .then(function(){ note.textContent = "¡Gracias! Hemos recibido tu respuesta."; btn.textContent = "Enviado"; })
-      .catch(function(){ note.textContent = "¡Gracias! Hemos recibido tu respuesta."; btn.textContent = "Enviado"; });
+      .then(function(){ note.textContent = "¡Gracias! Hemos recibido tu respuesta."; btn.textContent = "Enviado"; if (choice !== "declines") enableCalendar(); })
+      .catch(function(){ note.textContent = "¡Gracias! Hemos recibido tu respuesta."; btn.textContent = "Enviado"; if (choice !== "declines") enableCalendar(); });
   });
+
+  /* --- 5b. Calendario: se habilita solo al confirmar asistencia ---
+     .ics universal (iPhone abre Calendario, Android abre su app). */
+  var calWrap = document.getElementById("calWrap");
+  var calIcs = document.getElementById("calIcs");
+  function icsEsc(s){ return String(s).replace(/\\/g, "\\\\").replace(/;/g, "\\;").replace(/,/g, "\\,").replace(/\n/g, "\\n"); }
+  function enableCalendar(){
+    if (!calWrap || !calIcs) return;
+    var stamp = new Date().toISOString().replace(/[-:]/g, "").split(".")[0] + "Z";
+    var ics = ["BEGIN:VCALENDAR", "VERSION:2.0", "PRODID:-//Charlea//Boda Nicole Rodrigo//ES",
+      "BEGIN:VEVENT", "UID:boda-nicole-rodrigo-" + Date.now() + "@charlea",
+      "DTSTAMP:" + stamp, "DTSTART:20261121T223000Z", "DTEND:20261122T023000Z",
+      "SUMMARY:" + icsEsc("Boda Nicole & Rodrigo"),
+      "DESCRIPTION:" + icsEsc("Ceremonia y recepción · Ministerio Cristiano Internacional Río de Gloria, San Salvador."),
+      "LOCATION:" + icsEsc("Ministerio Cristiano Internacional Río de Gloria, San Salvador"),
+      "END:VEVENT", "END:VCALENDAR"].join("\r\n");
+    try {
+      if (calIcs.href && calIcs.href.indexOf("blob:") === 0) URL.revokeObjectURL(calIcs.href);
+      calIcs.href = URL.createObjectURL(new Blob([ics], { type: "text/calendar" }));
+    } catch (e) { calIcs.href = "data:text/calendar;charset=utf-8," + encodeURIComponent(ics); }
+    calWrap.hidden = false;
+  }
 
   /* --- 6. Countdown to Nov 21, 2026, 4:30 PM (El Salvador) --- */
   (function(){
