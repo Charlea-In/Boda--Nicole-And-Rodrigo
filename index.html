@@ -67,6 +67,9 @@ body.locked{overflow:hidden}
   box-shadow:none;border:0;border-bottom:1px solid var(--border-hex);
   display:flex;flex-direction:column;justify-content:safe center;min-height:100svh;
 }
+/* Secciones compactas: alto justo para su contenido */
+.card.compact{min-height:0}
+.card.compact.pad{padding:44px 24px 48px}
 .card.pad>*,.card.gal>*,.countband>*{position:relative;z-index:1}
 .card.pad::before,.card.gal::before,.countband::before{content:"";position:absolute;inset:0;background-image:url("assets/fondo-floral-1472.jpg");background-image:-webkit-image-set(url("assets/fondo-floral-1472.webp") 1x);background-image:image-set(url("assets/fondo-floral-1472.webp") type("image/webp") 1x,url("assets/fondo-floral-1472.jpg") type("image/jpeg") 1x);background-size:cover;background-position:center;background-repeat:no-repeat;opacity:.5;pointer-events:none}
 .card.pad{padding:56px 24px 60px}
@@ -380,7 +383,7 @@ body.locked .hero-bg img{animation:none !important}
   </article>
 
   <!-- 7 GIFTS -->
-  <article class="card pad reveal" id="gifts" data-od-id="gifts-card" aria-label="Muestras de cariño">
+  <article class="card pad compact reveal" id="gifts" data-od-id="gifts-card" aria-label="Muestras de cariño">
     <div class="sec-title" data-od-id="gifts-title">
       <span class="script">muestras de</span><span class="serif">Cariño</span>
       <img src="assets/heart.svg" alt="" aria-hidden="true">
