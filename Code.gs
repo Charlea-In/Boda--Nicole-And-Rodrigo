@@ -21,7 +21,7 @@
 var SHARED_KEY = 'nicoleyrodrigo2026';
 /* Sube este número cada vez que cambies este archivo para que el admin
    detecte despliegues viejos. */
-var CODE_VERSION = 4;
+var CODE_VERSION = 5;
 var SHEET_INVITADOS = 'Invitados';
 var SHEET_MESAS = 'Mesas';
 var SHEET_RSVP = 'RSVP';
@@ -124,24 +124,35 @@ function _dataRows(sh, ncols) {
   return vals.filter(function (r) { return r[0] !== '' && r[0] !== null; });
 }
 
-/** Fusiona duplicados por nombre (varios teléfonos crean el mismo
-    invitado con distinto id): gana el estado más avanzado (si > no > pendiente). */
-function _dedupeGuests(guests) {
-  function rank(s) { return s === 'si' ? 2 : (s === 'no' ? 1 : 0); }
+/** Papelera de borrados compartida: ids 'g:123' / 'm:456'.
+    Lo borrado no resucita aunque otro teléfono lo re-suba. */
+function _borradosList() {
+  var sh = _sheet('Borrados');
+  _ensureHeader(sh, ['id']);
+  var last = sh.getLastRow();
+  if (last < 2) return [];
+  return sh.getRange(2, 1, last - 1, 1).getValues().map(function (r) { return String(r[0]); });
+}
+
+function _borradosAdd(tags) {
+  var sh = _sheet('Borrados');
+  _ensureHeader(sh, ['id']);
+  var have = {};
+  _borradosList().forEach(function (t) { have[t] = 1; });
+  tags.forEach(function (t) {
+    t = String(t);
+    if (t && !have[t]) { sh.appendRow([t]); have[t] = 1; }
+  });
+}
+
+/** Dedupe por id (el último gana). NUNCA por nombre: los homónimos son válidos. */
+function _dedupeById(rows) {
   var map = {};
   var order = [];
-  guests.forEach(function (g) {
-    var k = _norm(g.name);
-    if (!k) { order.push(g); return; }
-    if (!map[k]) { map[k] = g; order.push(g); }
-    else {
-      var cur = map[k];
-      if (rank(g.status) > rank(cur.status)) {
-        if (g.mesaId == null) g.mesaId = cur.mesaId;
-        map[k] = g;
-        order[order.indexOf(cur)] = g;
-      }
-    }
+  rows.forEach(function (r) {
+    var k = String(r.id);
+    if (!map[k]) { map[k] = r; order.push(r); }
+    else { order[order.indexOf(map[k])] = r; map[k] = r; }
   });
   return order;
 }
@@ -319,18 +330,26 @@ function _readRsvp() {
     });
 }
 
-/* LECTURA: ?action=state | ?action=rsvpLog (ambas con &key=...) */
+/* LECTURA: ?action=state | ?action=rsvpLog (ambas con &key=...).
+   Toma el lock brevemente para no leer a mitad de una reescritura. */
 function doGet(e) {
-  var p = (e && e.parameter) || {};
-  if (p.action === 'state') {
-    if (!_keyOk(p.key)) return _json({ ok: false, error: 'key', version: CODE_VERSION });
-    return _json({ ok: true, guests: _readGuests(), mesas: _readMesas(), version: CODE_VERSION });
+  var lock = LockService.getScriptLock();
+  var got = false;
+  try { lock.waitLock(8000); got = true; } catch (err) { got = false; }
+  try {
+    var p = (e && e.parameter) || {};
+    if (p.action === 'state') {
+      if (!_keyOk(p.key)) return _json({ ok: false, error: 'key', version: CODE_VERSION });
+      return _json({ ok: true, guests: _readGuests(), mesas: _readMesas(), borrados: _borradosList(), version: CODE_VERSION });
+    }
+    if (p.action === 'rsvpLog') {
+      if (!_keyOk(p.key)) return _json({ ok: false, error: 'key', version: CODE_VERSION });
+      return _json({ ok: true, rsvp: _readRsvp(), version: CODE_VERSION });
+    }
+    return _json({ ok: true, service: 'boda-nicole-rodrigo', version: CODE_VERSION });
+  } finally {
+    if (got) lock.releaseLock();
   }
-  if (p.action === 'rsvpLog') {
-    if (!_keyOk(p.key)) return _json({ ok: false, error: 'key', version: CODE_VERSION });
-    return _json({ ok: true, rsvp: _readRsvp(), version: CODE_VERSION });
-  }
-  return _json({ ok: true, service: 'boda-nicole-rodrigo', version: CODE_VERSION });
 }
 
 /* ESCRITURA: JSON {action, key, ...} o formulario clásico */
@@ -383,6 +402,7 @@ function doPost(e) {
     if (action === 'deleteGuest') {
       var gid = String(body.id != null ? body.id : (p.id || ''));
       if (!gid) return _json({ ok: false, error: 'id' });
+      _borradosAdd(['g:' + gid]);
       var shG0 = _sheetByRole('guests');
       var gDel = _deleteRowById(shG0, HEADERS.guests, gid);
       var shM = _sheetByRole('mesas');
@@ -407,6 +427,7 @@ function doPost(e) {
     if (action === 'deleteMesa') {
       var mid = String(body.id != null ? body.id : (p.id || ''));
       if (!mid) return _json({ ok: false, error: 'id' });
+      _borradosAdd(['m:' + mid]);
       var shM0 = _sheetByRole('mesas');
       var mDel = _deleteRowById(shM0, HEADERS.mesas, mid);
       var shG2 = _sheetByRole('guests');
@@ -434,30 +455,57 @@ function doPost(e) {
       return _json({ ok: true, version: CODE_VERSION, file: ss.getName(),
         tabs: tabs, guestsTab: dg.getName(), guestsCols: _colMap(dg, HEADERS.guests),
         mesasTab: dm.getName(), mesasCols: _colMap(dm, HEADERS.mesas),
-        guestIds: _colAIds(dg), mesaIds: _colAIds(dm) });
+        guestIds: _colAIds(dg), mesaIds: _colAIds(dm), borrados: _borradosList() });
     }
 
+    /* saveState con UNIÓN por id (multi-teléfono seguro):
+       lo que subes se fusiona con lo que hay, nada se pisa;
+       los ids en la papelera jamás vuelven. */
     if (action === 'saveState') {
-      var guests = _dedupeGuests(body.guests || []);
+      var incomingDel = body.deletedIds || [];
+      _borradosAdd(incomingDel);
+      var gone = {};
+      _borradosList().forEach(function (t) { gone[t] = 1; });
+      var guests = _dedupeById(body.guests || []);
       var mesas = _dedupeMesas(body.mesas || []);
       var shG = _sheetByRole('guests');
       _ensureHeader(shG, HEADERS.guests);
       var gm = _colMap(shG, HEADERS.guests);
-      _clearData(shG);
+      var gById = {};
+      _readGuests().forEach(function (g) { gById['g:' + String(g.id)] = g; });
       guests.forEach(function (g) {
+        gById['g:' + String(g.id)] = {
+          id: g.id, name: g.name || '', phone: g.phone || '',
+          seats: g.seats || 1, status: g.status || 'pendiente',
+          mesaId: (g.mesaId == null || g.mesaId === '') ? '' : g.mesaId
+        };
+      });
+      _clearData(shG);
+      Object.keys(gById).forEach(function (k) {
+        if (gone[k]) return;
+        var g = gById[k];
         shG.appendRow(_mappedRow(gm, HEADERS.guests, {
-          id: g.id, nombre: g.name || '', telefono: g.phone || '',
-          pases: g.seats || 1, estado: g.status || 'pendiente',
-          mesaId: g.mesaId == null ? '' : g.mesaId
+          id: g.id, nombre: g.name, telefono: g.phone,
+          pases: g.seats, estado: g.status, mesaId: g.mesaId
         }));
       });
       var shM = _sheetByRole('mesas');
       _ensureHeader(shM, HEADERS.mesas);
       var mm = _colMap(shM, HEADERS.mesas);
-      _clearData(shM);
+      var mById = {};
+      _readMesas().forEach(function (m) { mById['m:' + String(m.id)] = m; });
       mesas.forEach(function (m) {
-        shM.appendRow(_mappedRow(mm, HEADERS.mesas, {
+        mById['m:' + String(m.id)] = {
           id: m.id, nombre: m.nombre || '', capacidad: m.capacidad || 6,
+          invitados: m.invitados || []
+        };
+      });
+      _clearData(shM);
+      Object.keys(mById).forEach(function (k) {
+        if (gone[k]) return;
+        var m = mById[k];
+        shM.appendRow(_mappedRow(mm, HEADERS.mesas, {
+          id: m.id, nombre: m.nombre, capacidad: m.capacidad,
           invitados: JSON.stringify(m.invitados || [])
         }));
       });

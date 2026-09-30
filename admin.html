@@ -737,8 +737,8 @@
     const MESAS_KEY   = 'cpl_mesas_nr';
     /* Versión del Code.gs esperada. Si el Sheet responde con una menor
        (o sin versión), el despliegue está viejo y hay que re-desplegar. */
-    const EXPECTED_GAS = 4;
-    const ADMIN_BUILD = '2026-09-28g';
+    const EXPECTED_GAS = 5;
+    const ADMIN_BUILD = '2026-09-30a';
 
     /* Revisa la versión del despliegue en cada respuesta de lectura.
        Devuelve true si está al día; si no, avisa y sigue (modo compatible). */
@@ -837,8 +837,9 @@
        configurada o falla, todo sigue funcionando en local. */
     let pushTimer = null;
     async function doPush() {
-      const r = await apiPost('saveState', { guests: loadGuests(), mesas: loadMesas() });
+      const r = await apiPost('saveState', { guests: loadGuests(), mesas: loadMesas(), deletedIds: sentDeleted() });
       if (!r || !r.ok) throw new Error('push');
+      clearDeleted();
       setText('cloudStatus', '✓ Sincronizado con Google Sheets');
       return r;
     }
@@ -875,9 +876,57 @@
         'Hoja invitados: ' + r.guestsTab + ' ' + JSON.stringify(r.guestsCols || {}) + '\n' +
         'Hoja mesas: ' + r.mesasTab + ' ' + JSON.stringify(r.mesasCols || {}) + '\n' +
         'Pestañas: ' + (r.tabs || []).map(t => t.name + ' (' + t.rows + ' filas, head: ' + (t.head || []).join('|') + ')').join(' · ') + '\n' +
-        'IDs mesas en Sheet: ' + (r.mesaIds || []).join(', ');
+        'IDs mesas en Sheet: ' + (r.mesaIds || []).join(', ') + '\n' +
+        'Papelera: ' + (r.borrados || []).join(', ');
     }
 
+    /* Tumbas locales de borrados ('g:id' / 'm:id'). Viajan en cada
+       saveState para que lo borrado no resucite desde otro teléfono. */
+    const DELETED_KEY = 'cpl_deleted_nr';
+    function loadDeleted() {
+      try { return JSON.parse(localStorage.getItem(DELETED_KEY)) || { guests: [], mesas: [] }; }
+      catch { return { guests: [], mesas: [] }; }
+    }
+    function addDeleted(kind, id) {
+      const d = loadDeleted();
+      const k = kind === 'm' ? 'mesas' : 'guests';
+      const tag = kind + ':' + String(id);
+      if (!d[k].includes(tag)) d[k].push(tag);
+      localStorage.setItem(DELETED_KEY, JSON.stringify(d));
+    }
+    function sentDeleted() {
+      const d = loadDeleted();
+      return [...d.guests, ...d.mesas];
+    }
+    function clearDeleted() {
+      localStorage.setItem(DELETED_KEY, JSON.stringify({ guests: [], mesas: [] }));
+    }
+    /* Guarda en tumbas locales los borrados que reporta el servidor. */
+    function absorbBorrados(list) {
+      if (!list || !list.length) return;
+      const d = loadDeleted();
+      let changed = false;
+      list.forEach(t => {
+        t = String(t);
+        const k = t.startsWith('m:') ? 'mesas' : 'guests';
+        if (!d[k].includes(t)) { d[k].push(t); changed = true; }
+      });
+      if (changed) localStorage.setItem(DELETED_KEY, JSON.stringify(d));
+    }
+    /* Quita de lo local los ids que el servidor marcó borrados. */
+    function purgeBorradosLocal(list) {
+      if (!list || !list.length) return;
+      const set = {};
+      list.forEach(t => { set[String(t)] = 1; });
+      const g2 = loadGuests().filter(g => !set['g:' + String(g.id)]);
+      const m2 = loadMesas().map(m => ({
+        ...m,
+        invitados: (m.invitados || []).filter(gid => !set['g:' + String(gid)])
+      })).filter(m => !set['m:' + String(m.id)]);
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(g2));
+      localStorage.setItem(MESAS_KEY, JSON.stringify(m2));
+      renderTable();
+    }
     /* Borrado directo de una fila en Sheets por id. Si el despliegue
        es viejo (sin este endpoint) devuelve {ok:false} y se usa saveState. */
     async function cloudDelete(action, payload) {
@@ -900,26 +949,15 @@
         const r = await apiGet('state');
         if (!r || !r.ok) throw new Error('pull');
         const gasOk = checkGasVersion(r);
-        const rankSt = s => s === 'si' ? 2 : (s === 'no' ? 1 : 0);
-        const byName = {};
-        const cloudGuests = [];
-        (r.guests || []).forEach(g => {
-          const k = String(g.name || '').trim().toLowerCase();
-          if (!k) { cloudGuests.push(g); return; }
-          if (!byName[k]) { byName[k] = g; cloudGuests.push(g); }
-          else {
-            const cur = byName[k];
-            if (rankSt(g.status) > rankSt(cur.status)) {
-              if (g.mesaId == null) g.mesaId = cur.mesaId;
-              if (!g.phone) g.phone = cur.phone;
-              if (!g.seats) g.seats = cur.seats;
-              cloudGuests[cloudGuests.indexOf(cur)] = g;
-              byName[k] = g;
-            } else {
-              if (cur.mesaId == null) cur.mesaId = g.mesaId;
-              if (!cur.phone) cur.phone = g.phone;
-            }
-          }
+        absorbBorrados(r.borrados);
+        /* Dedupe por id (el último gana). Nada de fusión por nombre:
+           los homónimos son invitados válidos y no deben perderse. */
+        const seenG = {};
+        const cloudGuests = (r.guests || []).filter(g => {
+          const k = String(g.id);
+          if (seenG[k]) return false;
+          seenG[k] = 1;
+          return true;
         });
         const seenM = {};
         const cloudMesas = (r.mesas || []).filter(m => {
@@ -931,13 +969,14 @@
         const localGuests = loadGuests();
         const localMesas = loadMesas();
         if (stateSeq !== seq0) {
-          /* Hubo un cambio local (ej. un borrado) durante el pull:
-             no pisar lo local; re-subir para converger con la nube. */
+          /* Hubo un cambio local durante el pull: no pisar lo local,
+             pero sí aplicar los borrados del servidor y re-subir. */
+          purgeBorradosLocal(r.borrados);
           schedulePush();
           return;
         }
         if (!cloudGuests.length && !cloudMesas.length && (localGuests.length || localMesas.length)) {
-          await apiPost('saveState', { guests: localGuests, mesas: localMesas });
+          await apiPost('saveState', { guests: localGuests, mesas: localMesas, deletedIds: sentDeleted() });
           await loadRsvpLog();
           setText('cloudStatus', '✓ Datos locales subidos a Google Sheets');
           if (!gasOk) checkGasVersion(r);
@@ -1219,6 +1258,7 @@
        ELIMINAR INVITADO
     ══════════════════════════════ */
     function deleteGuest(id) {
+      addDeleted('g', id);
       const guests = loadGuests().filter(g => g.id !== id);
       saveGuests(guests);
       // limpiar de mesas
@@ -1451,6 +1491,7 @@
       showToast(`✓ ${nombre} creada (${capacidad} lugares)`);
     }
     function deleteMesa(id) {
+      addDeleted('m', id);
       let mesas = loadMesas().filter(m => m.id !== id);
       saveMesas(mesas);
       const guests = loadGuests().map(g => g.mesaId === id ? { ...g, mesaId: null } : g);
