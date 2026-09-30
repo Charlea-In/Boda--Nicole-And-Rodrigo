@@ -1312,8 +1312,10 @@
         .split('{pases}').join(String(g.seats))
         .split('{link}').join(buildLink(g));
       const digits = (g.phone || '').replace(/\D/g, '');
-      const url = digits
-        ? `https://wa.me/${digits}?text=${encodeURIComponent(text)}`
+      /* El Salvador: números locales de 8 dígitos necesitan el 503 para wa.me */
+      const waNum = digits.length === 8 ? '503' + digits : digits;
+      const url = waNum
+        ? `https://wa.me/${waNum}?text=${encodeURIComponent(text)}`
         : `https://wa.me/?text=${encodeURIComponent(text)}`;
       window.open(url, '_blank');
     }
